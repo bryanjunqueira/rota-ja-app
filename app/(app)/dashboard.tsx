@@ -124,6 +124,7 @@ function DashboardMotorista() {
 
 function DashboardEmpresa() {
   const { user, empresa } = useAuth();
+  const router = useRouter();
   const [fretes, setFretes] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, ativos: 0, andamento: 0, finalizados: 0 });
   const [loading, setLoading] = useState(true);
@@ -189,10 +190,16 @@ function DashboardEmpresa() {
 
   return (
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}>
-      {/* Saudação empresa */}
-      <View style={styles.greeting}>
-        <Text style={styles.greetingTitle}>{empresa.nome_empresa}</Text>
-        <Text style={styles.greetingSubtitle}>Painel da Empresa</Text>
+      {/* Saudação empresa + botão novo frete */}
+      <View style={styles.greetingRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.greetingTitle}>{empresa.nome_empresa}</Text>
+          <Text style={styles.greetingSubtitle}>Painel da Empresa</Text>
+        </View>
+        <TouchableOpacity style={styles.novoFreteBtn} onPress={() => router.push('/(app)/novo-frete')} activeOpacity={0.8}>
+          <Text style={styles.novoBtnPlus}>+</Text>
+          <Text style={styles.novoBtnText}>Novo Frete</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Stats 4 cards — como no web PerfilEmpresa */}
@@ -217,7 +224,12 @@ function DashboardEmpresa() {
 
       {/* Filtros tabs — como no web */}
       <View style={styles.filtroSection}>
-        <Text style={styles.sectionTitle}>Meus Fretes</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.sectionTitle}>Meus Fretes</Text>
+          <TouchableOpacity onPress={() => router.push('/(app)/novo-frete')}>
+            <Text style={{ color: COLORS.accent, fontSize: FONT_SIZES.sm, fontWeight: '600' }}>+ Publicar</Text>
+          </TouchableOpacity>
+        </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtroRow}>
           {filtros.map(f => (
             <TouchableOpacity
@@ -332,8 +344,16 @@ const styles = StyleSheet.create({
 
   // Greeting
   greeting: { padding: SPACING.lg, paddingBottom: SPACING.sm },
+  greetingRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, paddingBottom: SPACING.sm },
   greetingTitle: { fontSize: FONT_SIZES.xl, fontWeight: '700', color: COLORS.textPrimary },
   greetingSubtitle: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, marginTop: 2 },
+  novoFreteBtn: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.accent,
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.full, ...SHADOWS.sm,
+  },
+  novoBtnPlus: { fontSize: FONT_SIZES.lg, fontWeight: '700', color: COLORS.textPrimary, marginRight: 4 },
+  novoBtnText: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textPrimary },
 
   // ── Motorista Stats ──
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: SPACING.md, gap: SPACING.sm },

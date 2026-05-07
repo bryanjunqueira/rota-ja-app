@@ -129,14 +129,29 @@ export const EmpresasService = {
         .single();
 
       if (error) {
-        console.error('Erro ao verificar status:', error);
         return { status: null, error: 'Erro ao verificar status da empresa.' };
       }
 
       return { status: data?.status || null };
     } catch (error) {
-      console.error('Erro inesperado:', error);
       return { status: null, error: 'Erro inesperado.' };
+    }
+  },
+
+  /**
+   * Atualiza dados da empresa
+   */
+  async atualizarPerfil(id: string, dados: Partial<{
+    nome_empresa: string; endereco: string; cep: string;
+    cidade: string; estado: string; telefone: string;
+    nome_responsavel: string; cargo: string;
+  }>): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await supabase.from('empresas').update(dados).eq('id', id);
+      if (error) return { success: false, error: 'Erro ao atualizar dados da empresa.' };
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Erro inesperado.' };
     }
   },
 };

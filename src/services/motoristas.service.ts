@@ -132,4 +132,22 @@ export const MotoristasService = {
       return { data: [], error: 'Erro ao carregar motoristas.' };
     }
   },
+
+  /**
+   * Atualiza dados do perfil do motorista
+   */
+  async atualizarPerfil(id: string, dados: Partial<{
+    nome_completo: string; endereco: string; cep: string;
+    celular: string; cnh: string; placa_veiculo: string;
+    tipo_veiculo: string; tipo_carroceria: string;
+    foto_motorista_url: string; foto_cnh_url: string;
+  }>): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await supabase.from('motoristas').update(dados).eq('id', id);
+      if (error) return { success: false, error: 'Erro ao atualizar perfil.' };
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Erro inesperado.' };
+    }
+  },
 };

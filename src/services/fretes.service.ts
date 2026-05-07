@@ -141,4 +141,57 @@ export const FretesService = {
       };
     } catch { return { total: 0, ativos: 0, andamento: 0, finalizados: 0 }; }
   },
+
+  /**
+   * Cria um novo frete (empresa) — mesma lógica do web CadastroFreteForm
+   */
+  async criarFrete(userId: string, dados: CriarFreteData) {
+    try {
+      // Buscar empresa_id pelo user_id (como no web)
+      const { data: empresa, error: empError } = await supabase
+        .from('empresas')
+        .select('id')
+        .eq('user_id', userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (empError || !empresa) {
+        return { success: false, error: 'Não foi possível encontrar os dados da empresa.' };
+      }
+
+      const { error } = await supabase
+        .from('fretes')
+        .insert({
+          empresa_id: empresa.id,
+          user_id: userId,
+          origem_cidade: dados.origemCidade,
+          origem_estado: dados.origemEstado,
+          destino_cidade: dados.destinoCidade,
+          destino_estado: dados.destinoEstado,
+          endereco_retirada: dados.enderecoRetirada,
+          cep_retirada: dados.cepRetirada,
+          numero_retirada: dados.numeroRetirada,
+          complemento_retirada: dados.complementoRetirada || null,
+          endereco_entrega: dados.enderecoEntrega,
+          cep_entrega: dados.cepEntrega,
+          numero_entrega: dados.numeroEntrega,
+          complemento_entrega: dados.complementoEntrega || null,
+          volume: dados.volume || null,
+          dimensao: dados.dimensao || null,
+          peso: dados.peso,
+          data_coleta: dados.dataColeta,
+          prazo_entrega: dados.prazoEntrega,
+          tipo_veiculo: dados.tipoVeiculo,
+          valor_frete: dados.valorFrete,
+          pedagogio_incluso: dados.pedagogioIncluso,
+        });
+
+      if (error) {
+        return { success: false, error: 'Erro ao cadastrar frete. Tente novamente.' };
+      }
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Erro inesperado ao cadastrar frete.' };
+    }
+  },
 };

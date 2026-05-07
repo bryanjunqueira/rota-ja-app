@@ -6,6 +6,7 @@ export { MotoristasService } from './motoristas.service';
 export { EmpresasService } from './empresas.service';
 export { FretesService } from './fretes.service';
 export { NotificacoesService } from './notificacoes.service';
+export { UploadService } from './upload.service';
 
 export type { LoginResult, SignUpResult, EmpresaStatusResult } from './auth.service';
 export type { CadastroMotoristaData, MotoristaData } from './motoristas.service';
