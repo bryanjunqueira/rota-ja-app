@@ -1,19 +1,22 @@
 /**
- * Tela de Cargas — funcionalidade diferente por role
- * Motorista: cargas disponíveis para aceitar
- * Empresa: seus fretes publicados (atalho para o dashboard)
+ * Tela de Cargas — filtros iguais ao web (CargasDisponiveisMotorista)
+ * 4 filtros: Origem (cidade select), Destino (cidade select), Tipo Veículo (picker), Distância Máxima (slider)
+ * + botão Buscar
  */
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import Slider from '@react-native-community/slider';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { FretesService } from '@/services';
-import { LoadingSpinner, Badge } from '@/components';
+import { LoadingSpinner, CidadeEstadoSelect } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 
+const TIPOS_VEICULO = ['Todos', 'Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck', 'Carreta'];
+
 export default function CargasScreen() {
-  const { role, user, motorista, empresa } = useAuth();
-  const router = useRouter();
+  const { role, user, motorista } = useAuth();
 
   if (role === 'empresa') return <CargasEmpresa userId={user?.id || ''} />;
   if (role === 'motorista') return <CargasMotorista />;
@@ -27,19 +30,25 @@ export default function CargasScreen() {
   );
 }
 
-// ── CARGAS MOTORISTA ──
+// ── CARGAS MOTORISTA (com 4 filtros iguais ao web) ──
 
 function CargasMotorista() {
   const { motorista } = useAuth();
-  const [cargas, setCargas] = useState<any[]>([]);
+  const [allCargas, setAllCargas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Filtros (iguais ao web CargasDisponiveisMotorista)
+  const [filtroOrigem, setFiltroOrigem] = useState('');
+  const [filtroDestino, setFiltroDestino] = useState('');
+  const [tipoVeiculo, setTipoVeiculo] = useState('Todos');
+  const [distanciaMaxima, setDistanciaMaxima] = useState(1000);
+
   const loadCargas = useCallback(async () => {
-    if (motorista) {
-      const { data } = await FretesService.buscarCargasDisponiveis(motorista.tipo_veiculo);
-      setCargas(data);
-    }
+    if (!motorista) return;
+    // Busca todas disponíveis (filtro é local, como no web)
+    const result = await FretesService.buscarTodosFretes();
+    setAllCargas(result.data);
     setLoading(false);
   }, [motorista]);
 
@@ -48,17 +57,41 @@ function CargasMotorista() {
 
   const handleAceitar = async (freteId: string) => {
     if (!motorista) return;
-    Alert.alert('Aceitar Carga', 'Deseja aceitar esta carga?', [
+    Alert.alert('Coletar Frete', 'Deseja aceitar e coletar esta carga?', [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Aceitar', onPress: async () => {
+      { text: 'Coletar', onPress: async () => {
         const result = await FretesService.aceitarCarga(freteId, motorista.id);
-        if (result.success) { Alert.alert('Sucesso', 'Carga aceita!'); loadCargas(); }
+        if (result.success) { Alert.alert('Frete coletado!', 'O frete foi aceito e está agora em suas cargas.'); loadCargas(); }
         else Alert.alert('Erro', result.error || 'Não foi possível aceitar.');
       }},
     ]);
   };
 
-  if (loading) return <LoadingSpinner message="Carregando cargas..." />;
+  // Filtro local (lógica idêntica ao web CargasDisponiveisMotorista)
+  const cargasFiltradas = useMemo(() => {
+    return allCargas.filter(frete => {
+      // Filtrar por origem
+      const matchOrigem = !filtroOrigem ||
+        `${frete.origem_cidade}, ${frete.origem_estado}` === filtroOrigem;
+
+      // Filtrar por destino
+      const matchDestino = !filtroDestino ||
+        `${frete.destino_cidade}, ${frete.destino_estado}` === filtroDestino;
+
+      // Compatibilidade de veículo (mesma lógica do web)
+      const isCompatible = motorista && (
+        (motorista.tipo_veiculo === 'Carreta' && ['Toco', 'Truck', 'Bitruck', 'Carreta'].includes(frete.tipo_veiculo)) ||
+        (motorista.tipo_veiculo === 'Bitruck' && ['Toco', 'Truck', 'Bitruck'].includes(frete.tipo_veiculo)) ||
+        (motorista.tipo_veiculo === 'Truck' && ['Fiorino', 'Van', 'Caminhonete', 'Truck'].includes(frete.tipo_veiculo)) ||
+        frete.tipo_veiculo === motorista.tipo_veiculo
+      );
+
+      // Filtrar por tipo de veículo selecionado
+      const matchTipo = tipoVeiculo === 'Todos' || frete.tipo_veiculo === tipoVeiculo;
+
+      return matchOrigem && matchDestino && matchTipo && isCompatible;
+    });
+  }, [allCargas, filtroOrigem, filtroDestino, tipoVeiculo, motorista]);
 
   if (motorista?.status !== 'aprovado') {
     return (
@@ -70,55 +103,180 @@ function CargasMotorista() {
     );
   }
 
+  if (loading) return <LoadingSpinner message="Carregando cargas..." />;
+
   return (
-    <FlatList
-      style={styles.container}
-      data={cargas}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={{ padding: SPACING.md }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
-      ListEmptyComponent={
-        <View style={styles.empty}>
-          <View style={styles.emptyIcon}><Text style={styles.emptyIconText}>0</Text></View>
-          <Text style={styles.emptyTitle}>Nenhuma carga disponível</Text>
-          <Text style={styles.emptyText}>Não há cargas para {motorista?.tipo_veiculo} no momento.</Text>
-        </View>
-      }
-      renderItem={({ item }) => (
-        <View style={styles.card}>
-          <View style={styles.cardTopRow}>
-            <View style={styles.route}>
-              <View style={styles.routePoint}>
-                <View style={[styles.routeDot, { backgroundColor: COLORS.primary }]} />
-                <Text style={styles.city}>{item.origem_cidade}/{item.origem_estado}</Text>
-              </View>
-              <View style={styles.routeLineVert} />
-              <View style={styles.routePoint}>
-                <View style={[styles.routeDot, { backgroundColor: COLORS.accent }]} />
-                <Text style={styles.city}>{item.destino_cidade}/{item.destino_estado}</Text>
+    <View style={styles.container}>
+      <FlatList
+        data={cargasFiltradas}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+        ListHeaderComponent={
+          <View style={styles.filterCard}>
+            {/* Titulo */}
+            <View style={styles.filterTitleRow}>
+              <Ionicons name="cube-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.filterTitle}>Cargas compatíveis com {motorista?.tipo_veiculo}</Text>
+            </View>
+
+            {/* Filtro: Origem */}
+            <View style={styles.filterField}>
+              <Text style={styles.filterLabel}>Filtrar por Origem</Text>
+              <CidadeEstadoSelect
+                value={filtroOrigem}
+                onChange={setFiltroOrigem}
+                placeholder="Selecione cidade de origem"
+              />
+            </View>
+
+            {/* Filtro: Destino */}
+            <View style={styles.filterField}>
+              <Text style={styles.filterLabel}>Filtrar por Destino</Text>
+              <CidadeEstadoSelect
+                value={filtroDestino}
+                onChange={setFiltroDestino}
+                placeholder="Selecione cidade de destino"
+              />
+            </View>
+
+            {/* Filtro: Tipo de Veículo */}
+            <View style={styles.filterField}>
+              <Text style={styles.filterLabel}>Tipo de Veículo</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+                {TIPOS_VEICULO.map(tipo => (
+                  <TouchableOpacity
+                    key={tipo}
+                    style={[styles.chip, tipoVeiculo === tipo && styles.chipActive]}
+                    onPress={() => setTipoVeiculo(tipo)}
+                  >
+                    <Text style={[styles.chipText, tipoVeiculo === tipo && styles.chipTextActive]}>{tipo}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Filtro: Distância Máxima */}
+            <View style={styles.filterField}>
+              <Text style={styles.filterLabel}>Distância Máxima</Text>
+              <View style={styles.sliderRow}>
+                <Slider
+                  style={{ flex: 1, height: 40 }}
+                  minimumValue={50}
+                  maximumValue={5000}
+                  step={50}
+                  value={distanciaMaxima}
+                  onValueChange={setDistanciaMaxima}
+                  minimumTrackTintColor={COLORS.primary}
+                  maximumTrackTintColor={COLORS.border}
+                  thumbTintColor={COLORS.primary}
+                />
+                <Text style={styles.sliderValue}>{distanciaMaxima} km</Text>
               </View>
             </View>
-            <Badge variant="success">Disponível</Badge>
-          </View>
 
-          <View style={styles.detailsGrid}>
-            <DetailCell label="Valor" value={`R$ ${Number(item.valor_frete).toFixed(2)}`} highlight />
-            <DetailCell label="Peso" value={`${item.peso}kg`} />
-            <DetailCell label="Veículo" value={item.tipo_veiculo} />
-            <DetailCell label="Coleta" value={item.data_coleta} />
-          </View>
+            {/* Botão Buscar / Limpar */}
+            <TouchableOpacity
+              style={styles.searchBtn}
+              onPress={() => {
+                setFiltroOrigem('');
+                setFiltroDestino('');
+                setTipoVeiculo('Todos');
+                setDistanciaMaxima(1000);
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="search" size={18} color={COLORS.white} />
+              <Text style={styles.searchBtnText}>Buscar</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity style={styles.acceptBtn} onPress={() => handleAceitar(item.id)} activeOpacity={0.8}>
-            <Text style={styles.acceptText}>Aceitar Carga</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
-    />
+            {/* Resultado */}
+            <Text style={styles.resultCount}>
+              {cargasFiltradas.length} carga{cargasFiltradas.length !== 1 ? 's' : ''} encontrada{cargasFiltradas.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Ionicons name="cube-outline" size={40} color={COLORS.textTertiary} />
+            <Text style={styles.emptyTitle}>Nenhuma carga encontrada</Text>
+            <Text style={styles.emptyText}>
+              {allCargas.length === 0
+                ? `Nenhuma carga disponível para ${motorista?.tipo_veiculo} no momento.`
+                : 'Nenhuma carga encontrada com os filtros aplicados.'
+              }
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <View style={styles.card}>
+            {/* Empresa + Badge veículo */}
+            <View style={styles.cardTopRow}>
+              <Text style={styles.empresaName} numberOfLines={1}>
+                {item.empresas?.nome_empresa || 'Empresa'}
+              </Text>
+              <View style={styles.vehicleBadge}>
+                <Text style={styles.vehicleBadgeText}>{item.tipo_veiculo}</Text>
+              </View>
+            </View>
+
+            {/* Rota */}
+            <View style={styles.route}>
+              <View style={styles.routePoint}>
+                <Ionicons name="location" size={14} color={COLORS.primary} />
+                <Text style={styles.routeText}>
+                  <Text style={styles.routeBold}>Origem: </Text>{item.origem_cidade} - {item.origem_estado}
+                </Text>
+              </View>
+              <View style={styles.routePoint}>
+                <Ionicons name="location" size={14} color={COLORS.accent} />
+                <Text style={styles.routeText}>
+                  <Text style={styles.routeBold}>Destino: </Text>{item.destino_cidade} - {item.destino_estado}
+                </Text>
+              </View>
+            </View>
+
+            {/* Detalhes em 2 colunas */}
+            <View style={styles.detailsRow}>
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>Carga:</Text>
+                <Text style={styles.detailValue}>{item.volume || 'N/I'}</Text>
+                <Text style={styles.detailSub}>{item.peso}kg</Text>
+              </View>
+              <View style={[styles.detailCol, { alignItems: 'flex-end' }]}>
+                <Text style={styles.detailLabel}>Coleta:</Text>
+                <Text style={styles.detailValue}>{new Date(item.data_coleta).toLocaleDateString('pt-BR')}</Text>
+              </View>
+            </View>
+
+            {/* Valor */}
+            <View style={styles.valorRow}>
+              <Text style={styles.valorText}>
+                R$ {Number(item.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </Text>
+              <Text style={styles.valorLabel}>Valor do frete</Text>
+            </View>
+
+            {/* Botões */}
+            <View style={styles.cardActions}>
+              <TouchableOpacity
+                style={styles.coletarBtn}
+                onPress={() => handleAceitar(item.id)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="checkmark-circle" size={16} color={COLORS.white} />
+                <Text style={styles.coletarText}>Coletar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
+      />
+    </View>
   );
 }
 
-// ── CARGAS EMPRESA (fretes publicados) ──
+// ── CARGAS EMPRESA ──
 
 function CargasEmpresa({ userId }: { userId: string }) {
   const router = useRouter();
@@ -147,13 +305,13 @@ function CargasEmpresa({ userId }: { userId: string }) {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
       ListHeaderComponent={
         <TouchableOpacity style={styles.publishBtn} onPress={() => router.push('/(app)/novo-frete')} activeOpacity={0.8}>
-          <Text style={styles.publishPlus}>+</Text>
+          <Ionicons name="add-circle-outline" size={22} color={COLORS.textPrimary} />
           <Text style={styles.publishText}>Publicar Novo Frete</Text>
         </TouchableOpacity>
       }
       ListEmptyComponent={
         <View style={styles.empty}>
-          <View style={styles.emptyIcon}><Text style={styles.emptyIconText}>0</Text></View>
+          <Ionicons name="document-outline" size={40} color={COLORS.textTertiary} />
           <Text style={styles.emptyTitle}>Nenhum frete publicado</Text>
           <Text style={styles.emptyText}>Publique seu primeiro frete para encontrar motoristas.</Text>
         </View>
@@ -170,20 +328,29 @@ function CargasEmpresa({ userId }: { userId: string }) {
           </View>
           <View style={styles.route}>
             <View style={styles.routePoint}>
-              <View style={[styles.routeDot, { backgroundColor: COLORS.primary }]} />
-              <Text style={styles.city}>{item.origem_cidade}/{item.origem_estado}</Text>
+              <Ionicons name="location" size={14} color={COLORS.primary} />
+              <Text style={styles.routeText}>{item.origem_cidade}/{item.origem_estado}</Text>
             </View>
-            <View style={styles.routeLineVert} />
             <View style={styles.routePoint}>
-              <View style={[styles.routeDot, { backgroundColor: COLORS.accent }]} />
-              <Text style={styles.city}>{item.destino_cidade}/{item.destino_estado}</Text>
+              <Ionicons name="location" size={14} color={COLORS.accent} />
+              <Text style={styles.routeText}>{item.destino_cidade}/{item.destino_estado}</Text>
             </View>
           </View>
-          <View style={styles.detailsGrid}>
-            <DetailCell label="Valor" value={`R$ ${Number(item.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} highlight />
-            <DetailCell label="Peso" value={`${item.peso}kg`} />
-            <DetailCell label="Veículo" value={item.tipo_veiculo} />
-            <DetailCell label="Coleta" value={new Date(item.data_coleta).toLocaleDateString('pt-BR')} />
+          <View style={styles.detailsRow}>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailLabel}>Valor</Text>
+              <Text style={[styles.detailValue, { color: COLORS.primary, fontWeight: '700' }]}>
+                R$ {Number(item.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </Text>
+            </View>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailLabel}>Peso</Text>
+              <Text style={styles.detailValue}>{item.peso}kg</Text>
+            </View>
+            <View style={styles.detailCol}>
+              <Text style={styles.detailLabel}>Veículo</Text>
+              <Text style={styles.detailValue}>{item.tipo_veiculo}</Text>
+            </View>
           </View>
           {item.motoristas && (
             <View style={styles.motoristaRow}>
@@ -203,80 +370,99 @@ function CargasEmpresa({ userId }: { userId: string }) {
   );
 }
 
-// ── SHARED COMPONENTS ──
-
-function DetailCell({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <View style={styles.detailCell}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={[styles.detailValue, highlight && { color: COLORS.primary, fontWeight: '700' }]}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
 
   blockedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl, backgroundColor: COLORS.background },
-  blockedIcon: {
-    width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.warningLight,
-    justifyContent: 'center', alignItems: 'center',
-  },
+  blockedIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.warningLight, justifyContent: 'center', alignItems: 'center' },
   blockedIconText: { fontSize: 28, fontWeight: '900', color: COLORS.warning },
   blockedTitle: { fontSize: FONT_SIZES.xl, fontWeight: '700', color: COLORS.textPrimary, marginTop: SPACING.md },
   blockedText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, textAlign: 'center', marginTop: SPACING.sm },
 
-  empty: { justifyContent: 'center', alignItems: 'center', padding: SPACING.xxl, marginTop: 40 },
-  emptyIcon: {
-    width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceVariant,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  emptyIconText: { fontSize: 24, fontWeight: '800', color: COLORS.textTertiary },
+  empty: { justifyContent: 'center', alignItems: 'center', padding: SPACING.xxl, marginTop: 20 },
   emptyTitle: { fontSize: FONT_SIZES.lg, fontWeight: '700', color: COLORS.textPrimary, marginTop: SPACING.md },
   emptyText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, textAlign: 'center', marginTop: SPACING.xs },
 
-  // Publish button (empresa)
-  publishBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.accent, borderRadius: BORDER_RADIUS.md,
-    paddingVertical: 14, marginBottom: SPACING.md, ...SHADOWS.sm,
+  // ── Filter card ──
+  filterCard: {
+    backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md, marginBottom: SPACING.md, ...SHADOWS.sm,
   },
-  publishPlus: { fontSize: FONT_SIZES.xl, fontWeight: '800', color: COLORS.textPrimary, marginRight: 6 },
-  publishText: { fontSize: FONT_SIZES.md, fontWeight: '600', color: COLORS.textPrimary },
+  filterTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
+  filterTitle: { fontSize: FONT_SIZES.md, fontWeight: '700', color: COLORS.textPrimary },
+  filterField: { marginBottom: SPACING.sm },
+  filterLabel: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 4 },
 
-  // Cards
+  // Chips (tipo veículo)
+  chipScroll: { flexDirection: 'row' },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1, borderColor: COLORS.border, marginRight: 8, backgroundColor: COLORS.background,
+  },
+  chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  chipText: { fontSize: FONT_SIZES.xs, fontWeight: '600', color: COLORS.textSecondary },
+  chipTextActive: { color: COLORS.white },
+
+  // Slider
+  sliderRow: { flexDirection: 'row', alignItems: 'center' },
+  sliderValue: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textSecondary, width: 70, textAlign: 'right' },
+
+  // Buscar
+  searchBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.sm,
+    paddingVertical: 12, marginTop: SPACING.sm,
+  },
+  searchBtnText: { color: COLORS.white, fontWeight: '700', fontSize: FONT_SIZES.md },
+  resultCount: { textAlign: 'center', fontSize: FONT_SIZES.xs, color: COLORS.textTertiary, marginTop: SPACING.sm },
+
+  // ── Cards ──
   card: { backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md, padding: SPACING.md, ...SHADOWS.sm },
-  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.sm },
+  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
+  empresaName: { fontSize: FONT_SIZES.md, fontWeight: '600', color: COLORS.textPrimary, flex: 1, marginRight: SPACING.sm },
+  vehicleBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: BORDER_RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
+  vehicleBadgeText: { fontSize: FONT_SIZES.xs, fontWeight: '600', color: COLORS.textSecondary },
   freteId: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textSecondary },
   statusPill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: BORDER_RADIUS.full },
   statusPillText: { fontSize: FONT_SIZES.xs, fontWeight: '600' },
 
   // Route
-  route: { marginBottom: SPACING.sm },
-  routePoint: { flexDirection: 'row', alignItems: 'center' },
-  routeDot: { width: 10, height: 10, borderRadius: 5, marginRight: SPACING.sm },
-  routeLineVert: { width: 1, height: 14, backgroundColor: COLORS.border, marginLeft: 4, marginVertical: 2 },
-  city: { fontSize: FONT_SIZES.md, fontWeight: '600', color: COLORS.textPrimary },
+  route: { marginBottom: SPACING.sm, gap: 4 },
+  routePoint: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  routeText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary },
+  routeBold: { fontWeight: '600', color: COLORS.textPrimary },
 
-  // Details grid
-  detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.sm },
-  detailCell: { width: '46%' },
+  // Details
+  detailsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.sm },
+  detailCol: {},
   detailLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textTertiary },
   detailValue: { fontSize: FONT_SIZES.sm, color: COLORS.textPrimary, fontWeight: '500' },
+  detailSub: { fontSize: FONT_SIZES.xs, color: COLORS.textTertiary },
 
-  // Accept button
-  acceptBtn: { backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.sm, paddingVertical: 12, alignItems: 'center' },
-  acceptText: { color: COLORS.white, fontWeight: '700', fontSize: FONT_SIZES.md },
+  // Valor
+  valorRow: { alignItems: 'center', paddingVertical: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.borderLight, marginBottom: SPACING.sm },
+  valorText: { fontSize: 22, fontWeight: '800', color: '#16a34a' },
+  valorLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textTertiary },
+
+  // Actions
+  cardActions: { flexDirection: 'row', gap: SPACING.sm },
+  coletarBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#16a34a', borderRadius: BORDER_RADIUS.sm, paddingVertical: 12,
+  },
+  coletarText: { color: COLORS.white, fontWeight: '700', fontSize: FONT_SIZES.md },
+
+  // Empresa publish
+  publishBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.accent, borderRadius: BORDER_RADIUS.md,
+    paddingVertical: 14, marginBottom: SPACING.md, ...SHADOWS.sm, gap: 6,
+  },
+  publishText: { fontSize: FONT_SIZES.md, fontWeight: '600', color: COLORS.textPrimary },
 
   // Motorista info
-  motoristaRow: {
-    flexDirection: 'row', alignItems: 'center', paddingTop: SPACING.sm,
-    borderTopWidth: 1, borderTopColor: COLORS.borderLight,
-  },
-  motoristaAvatar: {
-    width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primaryFaded,
-    justifyContent: 'center', alignItems: 'center', marginRight: SPACING.sm,
-  },
+  motoristaRow: { flexDirection: 'row', alignItems: 'center', paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.borderLight },
+  motoristaAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primaryFaded, justifyContent: 'center', alignItems: 'center', marginRight: SPACING.sm },
   motoristaInit: { fontSize: FONT_SIZES.sm, fontWeight: '700', color: COLORS.primary },
   motoristaName: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textPrimary },
   motoristaPhone: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },

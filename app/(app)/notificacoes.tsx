@@ -1,5 +1,5 @@
 /**
- * Tela de Notificações — com marcar todas como lidas + realtime
+ * Tela de Notificações — sem subscription duplicada (o _layout já faz)
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
@@ -24,15 +24,6 @@ export default function NotificacoesScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime
-  useEffect(() => {
-    if (!user) return;
-    const unsub = NotificacoesService.subscribeToNew((n) => {
-      setNotificacoes(prev => [n, ...prev]);
-    });
-    return unsub;
-  }, [user]);
-
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const handleMarcarLida = async (id: string) => {
@@ -52,7 +43,6 @@ export default function NotificacoesScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header com ação */}
       {temNaoLidas && (
         <TouchableOpacity style={styles.markAllBtn} onPress={handleMarcarTodas} activeOpacity={0.7}>
           <Ionicons name="checkmark-done-outline" size={18} color={COLORS.primary} />
@@ -103,14 +93,12 @@ export default function NotificacoesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-
   markAllBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: SPACING.sm, marginHorizontal: SPACING.md, marginTop: SPACING.sm,
     backgroundColor: COLORS.primaryFaded, borderRadius: BORDER_RADIUS.sm,
   },
   markAllText: { color: COLORS.primary, fontSize: FONT_SIZES.sm, fontWeight: '600', marginLeft: 6 },
-
   empty: { justifyContent: 'center', alignItems: 'center', padding: SPACING.xxl, marginTop: 40 },
   emptyIconContainer: {
     width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.surfaceVariant,
@@ -118,7 +106,6 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: FONT_SIZES.lg, fontWeight: '700', color: COLORS.textPrimary, marginTop: SPACING.md },
   emptyText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, textAlign: 'center', marginTop: SPACING.xs },
-
   card: { backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md, padding: SPACING.md, ...SHADOWS.sm },
   cardUnread: { borderLeftWidth: 3, borderLeftColor: COLORS.primary },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: SPACING.sm },

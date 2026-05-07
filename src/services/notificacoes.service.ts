@@ -1,5 +1,6 @@
 /**
  * Notificações Service (Mobile)
+ * Canal realtime com nome único por usuário para evitar conflitos
  */
 import { supabase } from '@/lib/supabase';
 
@@ -41,11 +42,27 @@ export const NotificacoesService = {
     } catch { return { success: false, error: 'Erro inesperado.' }; }
   },
 
-  subscribeToNew(onNew: (n: Notificacao) => void) {
-    const channel = supabase.channel('notificacoes-mobile')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes' },
-        (payload) => { onNew(payload.new as Notificacao); })
+  /**
+   * Subscription realtime — nome único por userId para evitar conflito
+   * de "cannot add postgres_changes after subscribe()"
+   */
+  subscribeToNew(userId: string, onNew: (n: Notificacao) => void) {
+    const channelName = `notif-${userId.slice(0, 8)}-${Date.now()}`;
+
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notificacoes',
+          filter: `usuario_id=eq.${userId}`,
+        },
+        (payload) => { onNew(payload.new as Notificacao); }
+      )
       .subscribe();
+
     return () => { supabase.removeChannel(channel); };
   },
 };

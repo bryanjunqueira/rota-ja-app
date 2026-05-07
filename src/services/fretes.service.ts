@@ -89,6 +89,27 @@ export const FretesService = {
     } catch { return { data: [], error: 'Erro inesperado.' }; }
   },
 
+  /**
+   * Busca todos os fretes disponíveis (sem filtro de veículo)
+   * com dados da empresa, igual ao TodosFretes do web
+   */
+  async buscarTodosFretes() {
+    try {
+      const { data, error } = await supabase
+        .from('fretes')
+        .select(`
+          id, origem_cidade, origem_estado, destino_cidade, destino_estado,
+          valor_frete, peso, tipo_veiculo, data_coleta, prazo_entrega,
+          status, volume,
+          empresas ( nome_empresa, telefone )
+        `)
+        .eq('status', 'disponivel')
+        .order('created_at', { ascending: false });
+      if (error) return { data: [], error: 'Erro ao carregar fretes.' };
+      return { data: data || [] };
+    } catch { return { data: [], error: 'Erro inesperado.' }; }
+  },
+
   async aceitarCarga(freteId: string, motoristaId: string) {
     try {
       const { error } = await supabase

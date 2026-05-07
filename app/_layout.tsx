@@ -3,12 +3,21 @@
  * Provê AuthProvider e configura navegação global.
  */
 import React, { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import * as NavigationBar from 'expo-navigation-bar';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 
 SplashScreen.preventAutoHideAsync();
+
+// Esconder barra de navegação do Android — aparece ao arrastar de baixo
+if (Platform.OS === 'android') {
+  NavigationBar.setVisibilityAsync('hidden');
+  NavigationBar.setBehaviorAsync('overlay-swipe');
+  NavigationBar.setBackgroundColorAsync('#00000000');
+}
 
 function RootNavigationGuard() {
   const { user, loading, role } = useAuth();
