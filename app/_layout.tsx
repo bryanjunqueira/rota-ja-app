@@ -15,7 +15,7 @@ SplashScreen.preventAutoHideAsync();
 // Esconder barra de navegação do Android — aparece ao arrastar de baixo
 if (Platform.OS === 'android') {
   NavigationBar.setVisibilityAsync('hidden');
-  NavigationBar.setBehaviorAsync('sticky-immersive');
+  NavigationBar.setBehaviorAsync('overlay-swipe');
 }
 
 function RootNavigationGuard() {

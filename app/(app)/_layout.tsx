@@ -35,7 +35,7 @@ export default function AppLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
-  
+
   const pagerRef = useRef<PagerView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -89,6 +89,7 @@ export default function AppLayout() {
         style={styles.pagerView}
         initialPage={0}
         onPageSelected={onPageSelected}
+        useNext={false}
       >
         <View key="1" style={styles.page}><DashboardScreen /></View>
         <View key="2" style={styles.page}><CargasScreen /></View>
@@ -152,14 +153,14 @@ export default function AppLayout() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
+  container: {
+    flex: 1,
     backgroundColor: COLORS.background,
   },
-  pagerView: { 
+  pagerView: {
     flex: 1,
   },
-  page: { 
+  page: {
     flex: 1,
   },
   tabBarWrapper: {
