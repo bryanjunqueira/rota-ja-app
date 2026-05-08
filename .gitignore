@@ -7,19 +7,19 @@ dist/
 web-build/
 
 # Native
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+# *.orig.*
+# *.jks
+# *.p8
+# *.p12
+# *.key
+# *.mobileprovision
 
 # Metro
 .metro-health-check*
 
 # env
-.env
-.env.local
+# .env
+# .env.local
 
 # debug
 npm-debug.*
@@ -34,5 +34,5 @@ yarn-error.*
 *.tsbuildinfo
 
 # IDE
-.vscode/
-.idea/
+# .vscode/
+# .idea/
