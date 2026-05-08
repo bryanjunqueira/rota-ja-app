@@ -285,7 +285,23 @@ function PerfilEmpresa({ empresa, user, editing, saving, onEdit, onLogout, onSav
           </>
         )}
 
-        <Button title="Sair da conta" onPress={onLogout} variant="danger" size="lg" style={{ marginTop: SPACING.md }} />
+        <TouchableOpacity 
+          style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            padding: SPACING.md, 
+            marginTop: SPACING.lg,
+            borderWidth: 1,
+            borderColor: COLORS.error,
+            borderRadius: BORDER_RADIUS.md,
+            gap: 8
+          }} 
+          onPress={onLogout}
+        >
+          <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
+          <Text style={{ color: COLORS.error, fontWeight: '700', fontSize: FONT_SIZES.md }}>Sair da conta</Text>
+        </TouchableOpacity>
         <View style={{ height: SPACING.xxl }} />
       </View>
     </ScrollView>
@@ -386,14 +402,17 @@ const st = StyleSheet.create({
   heroBadgeText: { fontSize: 12, fontWeight: '600' },
 
   // ── Body ──
-  body: { paddingHorizontal: SPACING.lg, marginTop: -12 },
+  body: { 
+    padding: SPACING.lg, // Mais espaço interno no corpo
+    marginTop: -20, // Mantém a sobreposição elegante
+  },
 
   // ── Card ──
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    marginTop: SPACING.md,
+    padding: 20, // Mais respiro dentro do card
+    marginBottom: 20, // Mais distância entre os cards
     ...SHADOWS.md,
   },
   cardTitleWrap: {

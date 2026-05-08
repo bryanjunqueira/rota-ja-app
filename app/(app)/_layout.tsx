@@ -1,17 +1,24 @@
 /**
- * Layout autenticado — Tabs com swipe entre telas
- * Badge de notificações, título dinâmico por role.
- * novo-frete oculto (acessado via push).
+ * Layout autenticado — Tabs com Swipe Fluido estilo Instagram
+ * Integração de PagerView para animação de deslizamento entre abas.
  */
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs, useRouter, usePathname } from 'expo-router';
-import { View, Text, StyleSheet, PanResponder } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '@/config/theme';
+import { COLORS, SPACING } from '@/config/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { NotificacoesService } from '@/services';
 
-const TAB_ROUTES = ['/(app)/dashboard', '/(app)/cargas', '/(app)/notificacoes', '/(app)/perfil'] as const;
+// Importando as telas diretamente para o PagerView
+import DashboardScreen from './dashboard';
+import CargasScreen from './cargas';
+import NotificacoesScreen from './notificacoes';
+import PerfilScreen from './perfil';
+
+const ROUTES = ['dashboard', 'cargas', 'notificacoes', 'perfil'];
 
 function NotifBadge({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -24,14 +31,17 @@ function NotifBadge({ count }: { count: number }) {
 
 export default function AppLayout() {
   const { user, role } = useAuth();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
+  
+  const pagerRef = useRef<PagerView>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
-  // Notificações: carregar contagem + realtime
+  // Carregar contagem de notificações
   useEffect(() => {
     if (!user) return;
-
     const loadCount = async () => {
       try {
         const { data } = await NotificacoesService.carregar(user.id, 50);
@@ -39,117 +49,133 @@ export default function AppLayout() {
       } catch { /* silencioso */ }
     };
     loadCount();
-
     const unsub = NotificacoesService.subscribeToNew(user.id, () => {
       setUnreadCount(prev => prev + 1);
     });
-
     return unsub;
   }, [user]);
 
-  // Swipe entre tabs
-  const currentIndex = useRef(0);
-
-  // Atualiza index baseado no pathname
+  // Sincronizar activeIndex com a rota atual quando ela muda externamente
   useEffect(() => {
-    const idx = TAB_ROUTES.findIndex(r => pathname.includes(r.split('/').pop()!));
-    if (idx >= 0) currentIndex.current = idx;
+    const routeName = pathname.split('/').pop();
+    const idx = ROUTES.indexOf(routeName || '');
+    if (idx !== -1 && idx !== activeIndex) {
+      setActiveIndex(idx);
+      pagerRef.current?.setPage(idx);
+    }
   }, [pathname]);
 
-  const navigateBySwipe = useCallback((direction: 'left' | 'right') => {
-    const delta = direction === 'left' ? 1 : -1;
-    const nextIdx = currentIndex.current + delta;
-    if (nextIdx < 0 || nextIdx >= TAB_ROUTES.length) return;
-    currentIndex.current = nextIdx;
-    router.replace(TAB_ROUTES[nextIdx]);
-  }, [router]);
+  const onPageSelected = (e: any) => {
+    const newIdx = e.nativeEvent.position;
+    if (newIdx !== activeIndex) {
+      setActiveIndex(newIdx);
+      // Atualiza a URL para que o botão da Tab reflita a seleção
+      router.replace(`/(app)/${ROUTES[newIdx]}`);
+    }
+  };
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) => {
-        // Só ativar swipe se movimento horizontal forte e vertical fraco
-        return Math.abs(gs.dx) > 30 && Math.abs(gs.dy) < 30;
-      },
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dx > 60) navigateBySwipe('right');
-        else if (gs.dx < -60) navigateBySwipe('left');
-      },
-    })
-  ).current;
+  const handleTabPress = (index: number) => {
+    setActiveIndex(index);
+    pagerRef.current?.setPage(index);
+  };
 
-  // Titulo dinâmico: "Cargas" para motorista, "Fretes" para empresa
   const cargasTitle = role === 'empresa' ? 'Fretes' : 'Cargas';
 
   return (
-    <View style={{ flex: 1 }} {...panResponder.panHandlers}>
-      <Tabs
-        screenOptions={{
-          headerStyle: { backgroundColor: COLORS.surface },
-          headerTintColor: COLORS.textPrimary,
-          headerTitleStyle: { fontWeight: '700', fontSize: 18 },
-          headerShadowVisible: true,
-          tabBarActiveTintColor: COLORS.primary,
-          tabBarInactiveTintColor: COLORS.textTertiary,
-          tabBarStyle: {
-            backgroundColor: COLORS.surface,
-            borderTopColor: COLORS.borderLight,
-            height: 60,
-            paddingBottom: 8,
-            paddingTop: 4,
-          },
-          tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-        }}
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* O PagerView fornece a animação de swipe suave estilo Instagram */}
+      <PagerView
+        ref={pagerRef}
+        style={styles.pagerView}
+        initialPage={0}
+        onPageSelected={onPageSelected}
       >
-        <Tabs.Screen
-          name="dashboard"
-          options={{
-            title: 'Início',
-            headerTitle: 'ROTA JÁ',
-            tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+        <View key="1" style={styles.page}><DashboardScreen /></View>
+        <View key="2" style={styles.page}><CargasScreen /></View>
+        <View key="3" style={styles.page}><NotificacoesScreen /></View>
+        <View key="4" style={styles.page}><PerfilScreen /></View>
+      </PagerView>
+
+      {/* A TabBar continua sendo gerenciada pelo expo-router Tabs para manter os ícones e navegação nativa */}
+      <View style={styles.tabBarWrapper}>
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarActiveTintColor: COLORS.primary,
+            tabBarInactiveTintColor: COLORS.textTertiary,
+            tabBarStyle: styles.tabBar,
+            tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
           }}
-        />
-        <Tabs.Screen
-          name="cargas"
-          options={{
-            title: cargasTitle,
-            headerTitle: cargasTitle,
-            tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" size={size} color={color} />,
-          }}
-        />
-        <Tabs.Screen
-          name="notificacoes"
-          options={{
-            title: 'Avisos',
-            tabBarIcon: ({ color, size }) => (
-              <View>
-                <Ionicons name="notifications-outline" size={size} color={color} />
-                <NotifBadge count={unreadCount} />
-              </View>
-            ),
-          }}
-          listeners={{ tabPress: () => setUnreadCount(0) }}
-        />
-        <Tabs.Screen
-          name="perfil"
-          options={{
-            title: 'Perfil',
-            tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
-          }}
-        />
-        <Tabs.Screen
-          name="novo-frete"
-          options={{
-            title: 'Novo Frete',
-            headerTitle: 'Publicar Frete',
-            href: null,
-          }}
-        />
-      </Tabs>
+        >
+          <Tabs.Screen
+            name="dashboard"
+            options={{
+              title: 'Início',
+              tabBarIcon: ({ color, size }) => <Ionicons name={activeIndex === 0 ? "home" : "home-outline"} size={size} color={color} />,
+            }}
+            listeners={{ tabPress: (e) => { e.preventDefault(); handleTabPress(0); } }}
+          />
+          <Tabs.Screen
+            name="cargas"
+            options={{
+              title: cargasTitle,
+              tabBarIcon: ({ color, size }) => <Ionicons name={activeIndex === 1 ? "cube" : "cube-outline"} size={size} color={color} />,
+            }}
+            listeners={{ tabPress: (e) => { e.preventDefault(); handleTabPress(1); } }}
+          />
+          <Tabs.Screen
+            name="notificacoes"
+            options={{
+              title: 'Avisos',
+              tabBarIcon: ({ color, size }) => (
+                <View>
+                  <Ionicons name={activeIndex === 2 ? "notifications" : "notifications-outline"} size={size} color={color} />
+                  <NotifBadge count={unreadCount} />
+                </View>
+              ),
+            }}
+            listeners={{ tabPress: (e) => { e.preventDefault(); handleTabPress(2); setUnreadCount(0); } }}
+          />
+          <Tabs.Screen
+            name="perfil"
+            options={{
+              title: 'Perfil',
+              tabBarIcon: ({ color, size }) => <Ionicons name={activeIndex === 3 ? "person" : "person-outline"} size={size} color={color} />,
+            }}
+            listeners={{ tabPress: (e) => { e.preventDefault(); handleTabPress(3); } }}
+          />
+          <Tabs.Screen name="novo-frete" options={{ href: null }} />
+        </Tabs>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { 
+    flex: 1, 
+    backgroundColor: COLORS.background,
+  },
+  pagerView: { 
+    flex: 1,
+  },
+  page: { 
+    flex: 1,
+  },
+  tabBarWrapper: {
+    height: 60,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    backgroundColor: COLORS.surface,
+  },
+  tabBar: {
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 0,
+    elevation: 0,
+    height: 60,
+    paddingBottom: 8,
+    paddingTop: 4,
+  },
   badge: {
     position: 'absolute', top: -4, right: -8,
     backgroundColor: COLORS.error, borderRadius: 10,

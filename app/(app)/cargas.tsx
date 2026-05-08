@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { FretesService } from '@/services';
-import { LoadingSpinner, CidadeEstadoSelect } from '@/components';
+import { LoadingSpinner, CidadeEstadoSelect, Button } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 
 const TIPOS_VEICULO = ['Todos', 'Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck', 'Carreta'];
@@ -278,11 +278,18 @@ function CargasMotorista() {
 
 // ── CARGAS EMPRESA ──
 
+// ── CARGAS EMPRESA ──
+
+import { Modal, TextInput } from 'react-native';
+
 function CargasEmpresa({ userId }: { userId: string }) {
   const router = useRouter();
   const [fretes, setFretes] = useState<any[]>([]);
+  const [allPublicFretes, setAllPublicFretes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -291,82 +298,172 @@ function CargasEmpresa({ userId }: { userId: string }) {
     setLoading(false);
   }, [userId]);
 
+  const loadPublicFretes = async () => {
+    const { data } = await FretesService.buscarTodosFretes();
+    setAllPublicFretes(data);
+    setShowSearchModal(true);
+  };
+
   useEffect(() => { load(); }, [load]);
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+
+  const filteredPublic = useMemo(() => {
+    if (!searchTerm) return allPublicFretes;
+    const s = searchTerm.toLowerCase();
+    return allPublicFretes.filter(f => 
+      f.origem_cidade.toLowerCase().includes(s) ||
+      f.destino_cidade.toLowerCase().includes(s) ||
+      f.tipo_veiculo.toLowerCase().includes(s) ||
+      (f.empresas?.nome_empresa || '').toLowerCase().includes(s)
+    );
+  }, [allPublicFretes, searchTerm]);
 
   if (loading) return <LoadingSpinner message="Carregando fretes..." />;
 
   return (
-    <FlatList
-      style={styles.container}
-      data={fretes}
-      keyExtractor={item => item.id}
-      contentContainerStyle={{ padding: SPACING.md }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
-      ListHeaderComponent={
-        <TouchableOpacity style={styles.publishBtn} onPress={() => router.push('/(app)/novo-frete')} activeOpacity={0.8}>
-          <Ionicons name="add-circle-outline" size={22} color={COLORS.textPrimary} />
-          <Text style={styles.publishText}>Publicar Novo Frete</Text>
-        </TouchableOpacity>
-      }
-      ListEmptyComponent={
-        <View style={styles.empty}>
-          <Ionicons name="document-outline" size={40} color={COLORS.textTertiary} />
-          <Text style={styles.emptyTitle}>Nenhum frete publicado</Text>
-          <Text style={styles.emptyText}>Publique seu primeiro frete para encontrar motoristas.</Text>
-        </View>
-      }
-      renderItem={({ item }) => (
-        <View style={styles.card}>
-          <View style={styles.cardTopRow}>
-            <Text style={styles.freteId}>#{item.id?.slice(0, 8)}</Text>
-            <View style={[styles.statusPill, { backgroundColor: getStatusColor(item.status).bg }]}>
-              <Text style={[styles.statusPillText, { color: getStatusColor(item.status).text }]}>
-                {getStatusLabel(item.status)}
-              </Text>
-            </View>
+    <View style={styles.container}>
+      <FlatList
+        data={fretes}
+        keyExtractor={item => item.id}
+        contentContainerStyle={{ padding: SPACING.md }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+        ListHeaderComponent={
+          <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
+            <TouchableOpacity 
+              style={[styles.publishBtn, { flex: 1, backgroundColor: COLORS.accent, marginBottom: 0 }]} 
+              onPress={loadPublicFretes} 
+              activeOpacity={0.8}
+            >
+              <Ionicons name="search-outline" size={20} color={COLORS.textPrimary} />
+              <Text style={styles.publishText}>Todos os Fretes</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.publishBtn, { flex: 1, backgroundColor: COLORS.primary, marginBottom: 0 }]} 
+              onPress={() => router.push('/(app)/novo-frete')} 
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add-outline" size={22} color={COLORS.white} />
+              <Text style={[styles.publishText, { color: COLORS.white }]}>Novo Frete</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.route}>
-            <View style={styles.routePoint}>
-              <Ionicons name="location" size={14} color={COLORS.primary} />
-              <Text style={styles.routeText}>{item.origem_cidade}/{item.origem_estado}</Text>
-            </View>
-            <View style={styles.routePoint}>
-              <Ionicons name="location" size={14} color={COLORS.accent} />
-              <Text style={styles.routeText}>{item.destino_cidade}/{item.destino_estado}</Text>
-            </View>
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Ionicons name="document-outline" size={40} color={COLORS.textTertiary} />
+            <Text style={styles.emptyTitle}>Nenhum frete publicado</Text>
+            <Text style={styles.emptyText}>Publique seu primeiro frete para encontrar motoristas.</Text>
           </View>
-          <View style={styles.detailsRow}>
-            <View style={styles.detailCol}>
-              <Text style={styles.detailLabel}>Valor</Text>
-              <Text style={[styles.detailValue, { color: COLORS.primary, fontWeight: '700' }]}>
-                R$ {Number(item.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </Text>
-            </View>
-            <View style={styles.detailCol}>
-              <Text style={styles.detailLabel}>Peso</Text>
-              <Text style={styles.detailValue}>{item.peso}kg</Text>
-            </View>
-            <View style={styles.detailCol}>
-              <Text style={styles.detailLabel}>Veículo</Text>
-              <Text style={styles.detailValue}>{item.tipo_veiculo}</Text>
-            </View>
-          </View>
-          {item.motoristas && (
-            <View style={styles.motoristaRow}>
-              <View style={styles.motoristaAvatar}>
-                <Text style={styles.motoristaInit}>{item.motoristas.nome_completo?.charAt(0)?.toUpperCase()}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.motoristaName}>{item.motoristas.nome_completo}</Text>
-                <Text style={styles.motoristaPhone}>{item.motoristas.celular}</Text>
+        }
+        renderItem={({ item }) => (
+          <View style={styles.card}>
+            <View style={styles.cardTopRow}>
+              <Text style={styles.freteId}>#{item.id?.slice(0, 8)}</Text>
+              <View style={[styles.statusPill, { backgroundColor: getStatusColor(item.status).bg }]}>
+                <Text style={[styles.statusPillText, { color: getStatusColor(item.status).text }]}>
+                  {getStatusLabel(item.status)}
+                </Text>
               </View>
             </View>
-          )}
+            <View style={styles.route}>
+              <View style={styles.routePoint}>
+                <Ionicons name="location" size={14} color={COLORS.primary} />
+                <Text style={styles.routeText}>{item.origem_cidade}/{item.origem_estado}</Text>
+              </View>
+              <View style={styles.routePoint}>
+                <Ionicons name="location" size={14} color={COLORS.accent} />
+                <Text style={styles.routeText}>{item.destino_cidade}/{item.destino_estado}</Text>
+              </View>
+            </View>
+            <View style={styles.detailsRow}>
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>Valor</Text>
+                <Text style={[styles.detailValue, { color: COLORS.primary, fontWeight: '700' }]}>
+                  R$ {Number(item.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </Text>
+              </View>
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>Peso</Text>
+                <Text style={styles.detailValue}>{item.peso}kg</Text>
+              </View>
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>Veículo</Text>
+                <Text style={styles.detailValue}>{item.tipo_veiculo}</Text>
+              </View>
+            </View>
+            {item.motoristas && (
+              <View style={styles.motoristaRow}>
+                <View style={styles.motoristaAvatar}>
+                  <Text style={styles.motoristaInit}>{item.motoristas.nome_completo?.charAt(0)?.toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.motoristaName}>{item.motoristas.nome_completo}</Text>
+                  <Text style={styles.motoristaPhone}>{item.motoristas.celular}</Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+        ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
+      />
+
+      {/* Modal de Busca Global (Igual ao Web) */}
+      <Modal visible={showSearchModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Todos os Fretes</Text>
+              <TouchableOpacity onPress={() => setShowSearchModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchBarWrap}>
+              <Ionicons name="search" size={20} color={COLORS.textTertiary} />
+              <TextInput 
+                style={styles.searchInput}
+                placeholder="Pesquisar por origem, destino, veículo..."
+                value={searchTerm}
+                onChangeText={setSearchTerm}
+                placeholderTextColor={COLORS.textTertiary}
+              />
+            </View>
+
+            <FlatList
+              data={filteredPublic}
+              keyExtractor={item => item.id}
+              contentContainerStyle={{ padding: SPACING.md }}
+              ListEmptyComponent={
+                <Text style={{ textAlign: 'center', color: COLORS.textTertiary, marginTop: 40 }}>
+                  Nenhum frete encontrado.
+                </Text>
+              }
+              renderItem={({ item }) => (
+                <View style={[styles.card, { marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.borderLight }]}>
+                  <View style={styles.cardTopRow}>
+                    <Text style={[styles.empresaName, { color: COLORS.primary }]}>{item.empresas?.nome_empresa}</Text>
+                    <View style={styles.statusPill}>
+                      <Text style={styles.statusPillText}>{getStatusLabel(item.status)}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 12, color: COLORS.textTertiary, marginBottom: 4 }}>ID: #{item.id?.slice(0, 8)}</Text>
+                  <View style={styles.route}>
+                    <Text style={styles.routeText}><Text style={{ fontWeight: '700' }}>De:</Text> {item.origem_cidade}, {item.origem_estado}</Text>
+                    <Text style={styles.routeText}><Text style={{ fontWeight: '700' }}>Para:</Text> {item.destino_cidade}, {item.destino_estado}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                    <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>🚗 {item.tipo_veiculo} | 📦 {item.peso}kg</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.primary }}>R$ {Number(item.valor_frete).toLocaleString('pt-BR')}</Text>
+                  </View>
+                </View>
+              )}
+            />
+
+            <Button title="Fechar" onPress={() => setShowSearchModal(false)} variant="outline" style={{ margin: SPACING.md }} />
+          </View>
         </View>
-      )}
-      ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
-    />
+      </Modal>
+    </View>
   );
 }
 
@@ -417,8 +514,19 @@ const styles = StyleSheet.create({
   resultCount: { textAlign: 'center', fontSize: FONT_SIZES.xs, color: COLORS.textTertiary, marginTop: SPACING.sm },
 
   // ── Cards ──
-  card: { backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md, padding: SPACING.md, ...SHADOWS.sm },
-  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
+  card: { 
+    backgroundColor: COLORS.surface, 
+    borderRadius: BORDER_RADIUS.lg, 
+    padding: 20, // Aumentado de 16 para 20
+    marginBottom: 20, // Mais distância entre itens
+    ...SHADOWS.sm 
+  },
+  cardTopRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 16 
+  },
   empresaName: { fontSize: FONT_SIZES.md, fontWeight: '600', color: COLORS.textPrimary, flex: 1, marginRight: SPACING.sm },
   vehicleBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: BORDER_RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
   vehicleBadgeText: { fontSize: FONT_SIZES.xs, fontWeight: '600', color: COLORS.textSecondary },
@@ -466,4 +574,12 @@ const styles = StyleSheet.create({
   motoristaInit: { fontSize: FONT_SIZES.sm, fontWeight: '700', color: COLORS.primary },
   motoristaName: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textPrimary },
   motoristaPhone: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary },
+
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: COLORS.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '85%', paddingBottom: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
+  searchBarWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, margin: 16, paddingHorizontal: 12, borderRadius: 12, height: 48, ...SHADOWS.sm },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 16, color: COLORS.textPrimary },
 });

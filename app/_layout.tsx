@@ -15,8 +15,7 @@ SplashScreen.preventAutoHideAsync();
 // Esconder barra de navegação do Android — aparece ao arrastar de baixo
 if (Platform.OS === 'android') {
   NavigationBar.setVisibilityAsync('hidden');
-  NavigationBar.setBehaviorAsync('overlay-swipe');
-  NavigationBar.setBackgroundColorAsync('#00000000');
+  NavigationBar.setBehaviorAsync('sticky-immersive');
 }
 
 function RootNavigationGuard() {
@@ -34,12 +33,10 @@ function RootNavigationGuard() {
       router.replace('/(auth)/login');
     } else if (user && inAuthGroup) {
       // Logado mas está na tela de auth → redireciona baseado no role
-      if (role === 'motorista') {
+      if (role === 'motorista' || role === 'empresa') {
         router.replace('/(app)/dashboard');
-      } else if (role === 'empresa') {
-        router.replace('/(app)/dashboard');
-      } else {
-        // Sem cadastro ainda → vai para seleção de perfil
+      } else if (role === null && !loading) {
+        // Confirmado que não tem cadastro após o carregamento
         router.replace('/(auth)/selecionar-perfil');
       }
     }

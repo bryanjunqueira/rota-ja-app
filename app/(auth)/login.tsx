@@ -165,9 +165,8 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: SPACING.lg },
-
-  header: { alignItems: 'center', marginBottom: SPACING.xl },
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  header: { alignItems: 'center', marginBottom: 40 },
   logoContainer: {
     width: 56, height: 56, borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.primary,

@@ -196,13 +196,18 @@ const styles = StyleSheet.create({
   stepLabel: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textSecondary, marginTop: SPACING.sm },
 
   formCard: {
-    marginHorizontal: SPACING.lg, backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg, padding: SPACING.lg, ...SHADOWS.md,
+    marginHorizontal: 20, // Mais afastado das bordas
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg, 
+    padding: 24, // Mais respiro interno
+    ...SHADOWS.md,
+    marginBottom: 40,
   },
   sectionHeader: {
     fontSize: FONT_SIZES.md, fontWeight: '700', color: COLORS.textPrimary,
-    marginTop: SPACING.md, marginBottom: SPACING.sm,
-    paddingBottom: SPACING.xs, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight,
+    marginTop: 24, // Mais espaço antes de uma nova seção
+    marginBottom: 16,
+    paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight,
   },
   row: { flexDirection: 'row' },
 });

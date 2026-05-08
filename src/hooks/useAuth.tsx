@@ -66,14 +66,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       else setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
       setSession(s);
       setUser(s?.user ?? null);
-      if (s?.user) detectRole(s.user.id);
-      else {
+      if (s?.user) {
+        setLoading(true); // Garante que volta ao loading enquanto busca o role
+        await detectRole(s.user.id);
+        setLoading(false);
+      } else {
         setRole(null);
         setMotorista(null);
         setEmpresa(null);
+        setLoading(false);
       }
     });
 
