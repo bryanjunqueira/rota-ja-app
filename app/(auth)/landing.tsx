@@ -1,0 +1,300 @@
+/**
+ * Landing Page — Tela inicial do app adaptada do web
+ * Visual premium com gradientes, stats e parceiros
+ */
+import React, { useEffect, useRef } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Dimensions, Animated,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
+
+const { width } = Dimensions.get('window');
+
+const STATS = [
+  { value: '50K+', label: 'Motoristas', color: COLORS.primary },
+  { value: '15K+', label: 'Empresas', color: COLORS.accent },
+  { value: '1M+', label: 'Fretes', color: '#10B981' },
+];
+
+const PARTNERS = [
+  { icon: 'construct-outline' as const, title: 'Borracharia 24h', desc: 'Atendimento em rodovias', color: '#EF4444', bg: '#FEE2E2' },
+  { icon: 'cog-outline' as const, title: 'Mecânica Diesel', desc: 'Motores pesados', color: '#3B82F6', bg: '#DBEAFE' },
+  { icon: 'car-outline' as const, title: 'Mecânica Leves', desc: 'Veículos utilitários', color: '#10B981', bg: '#D1FAE5' },
+  { icon: 'restaurant-outline' as const, title: 'Restaurantes', desc: 'Refeições na estrada', color: '#F59E0B', bg: '#FEF3C7' },
+  { icon: 'speedometer-outline' as const, title: 'Postos Parceiros', desc: 'Preços especiais', color: '#8B5CF6', bg: '#EDE9FE' },
+];
+
+const FEATURES = [
+  { icon: 'navigate-outline' as const, title: 'Mapeamento Inteligente', desc: 'Rotas e fretes próximos à sua localização', color: COLORS.primary },
+  { icon: 'shield-checkmark-outline' as const, title: 'Segurança Total', desc: 'Verificação de identidade e avaliações', color: COLORS.accent },
+  { icon: 'flash-outline' as const, title: 'Rapidez e Eficiência', desc: 'Conecte-se com motoristas e cargas em tempo real', color: '#10B981' },
+];
+
+export default function LandingScreen() {
+  const router = useRouter();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const statsAnim = useRef(STATS.map(() => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
+    ]).start();
+
+    statsAnim.forEach((anim, i) => {
+      Animated.timing(anim, {
+        toValue: 1, duration: 600, delay: 400 + i * 150, useNativeDriver: true,
+      }).start();
+    });
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        {/* ─── Hero Section ─── */}
+        <LinearGradient
+          colors={['#1976D2', '#2094F3', '#4DA9F5']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={styles.hero}
+        >
+          <Animated.View style={[styles.heroContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <View style={styles.logoBadge}>
+              <Text style={styles.logoText}>RJ</Text>
+            </View>
+            <Text style={styles.heroTitle}>ROTA JÁ</Text>
+            <Text style={styles.heroTagline}>Frete Ágil</Text>
+            <View style={styles.heroDivider} />
+            <Text style={styles.heroDesc}>
+              A plataforma que revoluciona o transporte de cargas no Brasil
+            </Text>
+          </Animated.View>
+
+          {/* Stats flutuantes */}
+          <View style={styles.statsRow}>
+            {STATS.map((stat, i) => (
+              <Animated.View
+                key={stat.label}
+                style={[styles.statCard, { opacity: statsAnim[i], transform: [{ scale: statsAnim[i] }] }]}
+              >
+                <Text style={[styles.statValue, { color: stat.color }]}>{stat.value}</Text>
+                <Text style={styles.statLabel}>{stat.label}</Text>
+              </Animated.View>
+            ))}
+          </View>
+        </LinearGradient>
+
+        {/* ─── CTAs ─── */}
+        <View style={styles.ctaSection}>
+          <TouchableOpacity
+            style={styles.ctaPrimary}
+            onPress={() => router.push('/(auth)/login')}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={[COLORS.primary, COLORS.primaryDark]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={styles.ctaGradient}
+            >
+              <Ionicons name="log-in-outline" size={22} color="#fff" />
+              <Text style={styles.ctaPrimaryText}>Entrar na minha conta</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.ctaSecondary}
+            onPress={() => router.push('/(auth)/cadastro')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="person-add-outline" size={20} color={COLORS.primary} />
+            <Text style={styles.ctaSecondaryText}>Criar conta gratuita</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ─── Quick Access Pills ─── */}
+        <View style={styles.pillsRow}>
+          <View style={[styles.pill, { borderColor: COLORS.primary }]}>  
+            <Ionicons name="cube-outline" size={16} color={COLORS.primary} />
+            <Text style={[styles.pillText, { color: COLORS.primary }]}>Fretes disponíveis</Text>
+          </View>
+          <View style={[styles.pill, { borderColor: COLORS.error }]}>
+            <Ionicons name="alert-circle-outline" size={16} color={COLORS.error} />
+            <Text style={[styles.pillText, { color: COLORS.error }]}>Cargas urgentes</Text>
+          </View>
+        </View>
+
+        {/* ─── Parceiros ─── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Empresas Parceiras</Text>
+          <Text style={styles.sectionSubtitle}>Serviços para motoristas e empresas</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.partnersScroll}>
+            {PARTNERS.map((p) => (
+              <View key={p.title} style={styles.partnerCard}>
+                <View style={[styles.partnerIcon, { backgroundColor: p.bg }]}>
+                  <Ionicons name={p.icon} size={24} color={p.color} />
+                </View>
+                <Text style={styles.partnerTitle}>{p.title}</Text>
+                <Text style={styles.partnerDesc}>{p.desc}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* ─── Diferenciais ─── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Por que escolher o Rota Já?</Text>
+          <Text style={styles.sectionSubtitle}>A solução completa para transporte de cargas</Text>
+          {FEATURES.map((f) => (
+            <View key={f.title} style={styles.featureCard}>
+              <View style={[styles.featureIcon, { backgroundColor: f.color + '18' }]}>
+                <Ionicons name={f.icon} size={26} color={f.color} />
+              </View>
+              <View style={styles.featureText}>
+                <Text style={styles.featureTitle}>{f.title}</Text>
+                <Text style={styles.featureDesc}>{f.desc}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* ─── Footer ─── */}
+        <View style={styles.footer}>
+          <View style={styles.footerLogo}>
+            <View style={styles.footerLogoBadge}>
+              <Text style={styles.footerLogoText}>RJ</Text>
+            </View>
+            <Text style={styles.footerBrand}>ROTA JÁ</Text>
+          </View>
+          <Text style={styles.footerCopy}>© 2024 ROTA JÁ. Conectando o Brasil{'\n'}através do transporte inteligente.</Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  scroll: { paddingBottom: 0 },
+
+  // Hero
+  hero: {
+    paddingTop: 60, paddingBottom: 50, paddingHorizontal: SPACING.lg,
+    borderBottomLeftRadius: 32, borderBottomRightRadius: 32,
+  },
+  heroContent: { alignItems: 'center' },
+  logoBadge: {
+    width: 64, height: 64, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: SPACING.md, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)',
+  },
+  logoText: { fontSize: 26, fontWeight: '900', color: '#fff', letterSpacing: 2 },
+  heroTitle: { fontSize: 36, fontWeight: '900', color: '#fff', letterSpacing: 3 },
+  heroTagline: {
+    fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.8)',
+    letterSpacing: 4, textTransform: 'uppercase', marginTop: 2,
+  },
+  heroDivider: {
+    width: 48, height: 3, backgroundColor: COLORS.accent,
+    borderRadius: 2, marginVertical: 16,
+  },
+  heroDesc: {
+    fontSize: 15, color: 'rgba(255,255,255,0.9)', textAlign: 'center',
+    lineHeight: 22, paddingHorizontal: 10,
+  },
+
+  // Stats
+  statsRow: {
+    flexDirection: 'row', justifyContent: 'center',
+    marginTop: 28, gap: 10,
+  },
+  statCard: {
+    backgroundColor: '#fff', borderRadius: BORDER_RADIUS.lg,
+    paddingVertical: 14, paddingHorizontal: 16,
+    alignItems: 'center', flex: 1, ...SHADOWS.md,
+  },
+  statValue: { fontSize: 22, fontWeight: '900' },
+  statLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary, marginTop: 2 },
+
+  // CTAs
+  ctaSection: { paddingHorizontal: SPACING.lg, marginTop: 28, gap: 12 },
+  ctaPrimary: { borderRadius: BORDER_RADIUS.md, overflow: 'hidden', ...SHADOWS.md },
+  ctaGradient: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 16, gap: 10,
+  },
+  ctaPrimaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  ctaSecondary: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, borderRadius: BORDER_RADIUS.md,
+    borderWidth: 2, borderColor: COLORS.primary, backgroundColor: '#fff',
+    gap: 10,
+  },
+  ctaSecondaryText: { color: COLORS.primary, fontSize: 16, fontWeight: '700' },
+
+  // Pills
+  pillsRow: {
+    flexDirection: 'row', paddingHorizontal: SPACING.lg,
+    marginTop: 20, gap: 10,
+  },
+  pill: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 12, borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1.5, backgroundColor: '#fff', gap: 6, ...SHADOWS.sm,
+  },
+  pillText: { fontSize: 13, fontWeight: '600' },
+
+  // Sections
+  section: { marginTop: 36, paddingHorizontal: SPACING.lg },
+  sectionTitle: {
+    fontSize: 22, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center',
+  },
+  sectionSubtitle: {
+    fontSize: 13, color: COLORS.textSecondary, textAlign: 'center',
+    marginTop: 4, marginBottom: 20,
+  },
+
+  // Partners
+  partnersScroll: { paddingRight: SPACING.lg, gap: 12 },
+  partnerCard: {
+    width: 140, backgroundColor: '#fff', borderRadius: BORDER_RADIUS.lg,
+    padding: 16, alignItems: 'center', ...SHADOWS.sm,
+  },
+  partnerIcon: {
+    width: 48, height: 48, borderRadius: 24,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 10,
+  },
+  partnerTitle: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, textAlign: 'center' },
+  partnerDesc: { fontSize: 11, color: COLORS.textSecondary, textAlign: 'center', marginTop: 3 },
+
+  // Features
+  featureCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    borderRadius: BORDER_RADIUS.lg, padding: 16, marginBottom: 12, ...SHADOWS.sm,
+  },
+  featureIcon: {
+    width: 52, height: 52, borderRadius: 16,
+    justifyContent: 'center', alignItems: 'center', marginRight: 14,
+  },
+  featureText: { flex: 1 },
+  featureTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  featureDesc: { fontSize: 13, color: COLORS.textSecondary, marginTop: 3, lineHeight: 18 },
+
+  // Footer
+  footer: {
+    marginTop: 36, paddingVertical: 28, paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.surfaceVariant, alignItems: 'center',
+  },
+  footerLogo: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  footerLogoBadge: {
+    width: 28, height: 28, borderRadius: 8, backgroundColor: COLORS.primary,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  footerLogoText: { fontSize: 12, fontWeight: '900', color: '#fff' },
+  footerBrand: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
+  footerCopy: { fontSize: 12, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 18 },
+});

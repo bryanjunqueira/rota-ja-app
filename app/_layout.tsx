@@ -29,8 +29,8 @@ function RootNavigationGuard() {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (!user && !inAuthGroup) {
-      // Não logado → redireciona para login
-      router.replace('/(auth)/login');
+      // Não logado → redireciona para landing
+      router.replace('/(auth)/landing');
     } else if (user && inAuthGroup) {
       // Logado mas está na tela de auth → redireciona baseado no role
       if (role === 'motorista' || role === 'empresa') {

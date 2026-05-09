@@ -6,7 +6,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs, useRouter, usePathname } from 'expo-router';
-import PagerView from 'react-native-pager-view';
+import { PagerView } from '@/components/PagerViewWrapper';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '@/config/theme';
 import { useAuth } from '@/hooks/useAuth';
