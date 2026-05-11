@@ -171,7 +171,10 @@ export function getStatusColor(status: string): { text: string; bg: string; bord
     case 'em_transporte':
       return { text: COLORS.statusEmTransporte, bg: COLORS.statusEmTransporteBg, border: COLORS.statusEmTransporte };
     case 'entregue':
+    case 'finalizado':
       return { text: COLORS.statusEntregue, bg: COLORS.statusEntregueBg, border: COLORS.statusEntregue };
+    case 'cancelado':
+      return { text: COLORS.statusRejeitado, bg: COLORS.statusRejeitadoBg, border: COLORS.statusRejeitado };
     default:
       return { text: COLORS.textSecondary, bg: COLORS.surfaceVariant, border: COLORS.border };
   }
@@ -189,7 +192,9 @@ export function getStatusLabel(status: string): string {
     case 'disponivel': return 'Aguardando Motorista';
     case 'aceito': return 'Aceito';
     case 'em_transporte': return 'Em Transporte';
-    case 'entregue': return 'Entregue';
+    case 'entregue':
+    case 'finalizado': return 'Finalizado';
+    case 'cancelado': return 'Cancelado';
     default: return status;
   }
 }

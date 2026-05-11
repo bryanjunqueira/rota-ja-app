@@ -145,7 +145,6 @@ export default function AppLayout() {
             }}
             listeners={{ tabPress: (e) => { e.preventDefault(); handleTabPress(3); } }}
           />
-          <Tabs.Screen name="novo-frete" options={{ href: null }} />
         </Tabs>
       </View>
     </View>

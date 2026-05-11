@@ -1,10 +1,10 @@
 /**
- * Tela de Cargas — filtros iguais ao web (CargasDisponiveisMotorista)
- * 4 filtros: Origem (cidade select), Destino (cidade select), Tipo Veículo (picker), Distância Máxima (slider)
- * + botão Buscar
+ * Tela de Cargas — busca inteligente com filtros
+ * Motorista: Origem, Destino, Distância Máxima (veículo detectado automaticamente do cadastro)
+ * Empresa: Buscar Fretes + Novo Frete + lista de fretes próprios
  */
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -13,7 +13,7 @@ import { FretesService } from '@/services';
 import { LoadingSpinner, CidadeEstadoSelect, Button } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 
-const TIPOS_VEICULO = ['Todos', 'Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck', 'Carreta'];
+
 
 export default function CargasScreen() {
   const { role, user, motorista } = useAuth();
@@ -41,7 +41,6 @@ function CargasMotorista() {
   // Filtros (iguais ao web CargasDisponiveisMotorista)
   const [filtroOrigem, setFiltroOrigem] = useState('');
   const [filtroDestino, setFiltroDestino] = useState('');
-  const [tipoVeiculo, setTipoVeiculo] = useState('Todos');
   const [distanciaMaxima, setDistanciaMaxima] = useState(1000);
 
   const loadCargas = useCallback(async () => {
@@ -67,31 +66,35 @@ function CargasMotorista() {
     ]);
   };
 
-  // Filtro local (lógica idêntica ao web CargasDisponiveisMotorista)
+  // Filtro local com compatibilidade automática de veículo
   const cargasFiltradas = useMemo(() => {
     return allCargas.filter(frete => {
-      // Filtrar por origem
-      const matchOrigem = !filtroOrigem ||
-        `${frete.origem_cidade}, ${frete.origem_estado}` === filtroOrigem;
+      // Filtrar por origem (busca parcial)
+      const origemStr = `${frete.origem_cidade}, ${frete.origem_estado}`;
+      const matchOrigem = !filtroOrigem || origemStr === filtroOrigem ||
+        frete.origem_cidade.toLowerCase().includes(filtroOrigem.toLowerCase());
 
-      // Filtrar por destino
-      const matchDestino = !filtroDestino ||
-        `${frete.destino_cidade}, ${frete.destino_estado}` === filtroDestino;
+      // Filtrar por destino (busca parcial)
+      const destinoStr = `${frete.destino_cidade}, ${frete.destino_estado}`;
+      const matchDestino = !filtroDestino || destinoStr === filtroDestino ||
+        frete.destino_cidade.toLowerCase().includes(filtroDestino.toLowerCase());
 
-      // Compatibilidade de veículo (mesma lógica do web)
-      const isCompatible = motorista && (
-        (motorista.tipo_veiculo === 'Carreta' && ['Toco', 'Truck', 'Bitruck', 'Carreta'].includes(frete.tipo_veiculo)) ||
-        (motorista.tipo_veiculo === 'Bitruck' && ['Toco', 'Truck', 'Bitruck'].includes(frete.tipo_veiculo)) ||
-        (motorista.tipo_veiculo === 'Truck' && ['Fiorino', 'Van', 'Caminhonete', 'Truck'].includes(frete.tipo_veiculo)) ||
-        frete.tipo_veiculo === motorista.tipo_veiculo
-      );
+      // Compatibilidade automática baseada no veículo cadastrado
+      const hierarquia: Record<string, string[]> = {
+        'Carreta': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck', 'Carreta'],
+        'Bitruck': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck'],
+        'Truck': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck'],
+        'Toco': ['Fiorino', 'Van', 'Caminhonete', 'Toco'],
+        'Caminhonete': ['Fiorino', 'Van', 'Caminhonete'],
+        'Van': ['Fiorino', 'Van'],
+        'Fiorino': ['Fiorino'],
+      };
+      const veiculosCompativeis = motorista ? (hierarquia[motorista.tipo_veiculo] || [motorista.tipo_veiculo]) : [];
+      const isCompatible = motorista ? veiculosCompativeis.includes(frete.tipo_veiculo) : true;
 
-      // Filtrar por tipo de veículo selecionado
-      const matchTipo = tipoVeiculo === 'Todos' || frete.tipo_veiculo === tipoVeiculo;
-
-      return matchOrigem && matchDestino && matchTipo && isCompatible;
+      return matchOrigem && matchDestino && isCompatible;
     });
-  }, [allCargas, filtroOrigem, filtroDestino, tipoVeiculo, motorista]);
+  }, [allCargas, filtroOrigem, filtroDestino, motorista]);
 
   if (motorista?.status !== 'aprovado') {
     return (
@@ -140,22 +143,6 @@ function CargasMotorista() {
               />
             </View>
 
-            {/* Filtro: Tipo de Veículo */}
-            <View style={styles.filterField}>
-              <Text style={styles.filterLabel}>Tipo de Veículo</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                {TIPOS_VEICULO.map(tipo => (
-                  <TouchableOpacity
-                    key={tipo}
-                    style={[styles.chip, tipoVeiculo === tipo && styles.chipActive]}
-                    onPress={() => setTipoVeiculo(tipo)}
-                  >
-                    <Text style={[styles.chipText, tipoVeiculo === tipo && styles.chipTextActive]}>{tipo}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
             {/* Filtro: Distância Máxima */}
             <View style={styles.filterField}>
               <Text style={styles.filterLabel}>Distância Máxima</Text>
@@ -175,25 +162,29 @@ function CargasMotorista() {
               </View>
             </View>
 
-            {/* Botão Buscar / Limpar */}
-            <TouchableOpacity
-              style={styles.searchBtn}
-              onPress={() => {
-                setFiltroOrigem('');
-                setFiltroDestino('');
-                setTipoVeiculo('Todos');
-                setDistanciaMaxima(1000);
-              }}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="search" size={18} color={COLORS.white} />
-              <Text style={styles.searchBtnText}>Buscar</Text>
-            </TouchableOpacity>
+            {/* Botão Limpar Filtros */}
+            {(filtroOrigem || filtroDestino || distanciaMaxima !== 1000) && (
+              <TouchableOpacity
+                style={styles.clearBtn}
+                onPress={() => {
+                  setFiltroOrigem('');
+                  setFiltroDestino('');
+                  setDistanciaMaxima(1000);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close-circle-outline" size={18} color={COLORS.error} />
+                <Text style={styles.clearBtnText}>Limpar Filtros</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Resultado */}
-            <Text style={styles.resultCount}>
-              {cargasFiltradas.length} carga{cargasFiltradas.length !== 1 ? 's' : ''} encontrada{cargasFiltradas.length !== 1 ? 's' : ''}
-            </Text>
+            <View style={styles.resultRow}>
+              <Ionicons name="cube" size={16} color={COLORS.primary} />
+              <Text style={styles.resultCount}>
+                {cargasFiltradas.length} carga{cargasFiltradas.length !== 1 ? 's' : ''} encontrada{cargasFiltradas.length !== 1 ? 's' : ''}
+              </Text>
+            </View>
           </View>
         }
         ListEmptyComponent={
@@ -335,12 +326,12 @@ function CargasEmpresa({ userId }: { userId: string }) {
               activeOpacity={0.8}
             >
               <Ionicons name="search-outline" size={20} color={COLORS.textPrimary} />
-              <Text style={styles.publishText}>Todos os Fretes</Text>
+              <Text style={styles.publishText}>Buscar Fretes</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               style={[styles.publishBtn, { flex: 1, backgroundColor: COLORS.primary, marginBottom: 0 }]} 
-              onPress={() => router.push('/(app)/novo-frete')} 
+              onPress={() => router.push('/novo-frete')} 
               activeOpacity={0.8}
             >
               <Ionicons name="add-outline" size={22} color={COLORS.white} />
@@ -412,7 +403,7 @@ function CargasEmpresa({ userId }: { userId: string }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Todos os Fretes</Text>
+              <Text style={styles.modalTitle}>Buscar Fretes</Text>
               <TouchableOpacity onPress={() => setShowSearchModal(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textSecondary} />
               </TouchableOpacity>
@@ -504,22 +495,27 @@ const styles = StyleSheet.create({
   sliderRow: { flexDirection: 'row', alignItems: 'center' },
   sliderValue: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textSecondary, width: 70, textAlign: 'right' },
 
-  // Buscar
-  searchBtn: {
+  // Clear / Result
+  clearBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.sm,
-    paddingVertical: 12, marginTop: SPACING.sm,
+    borderWidth: 1, borderColor: COLORS.error, borderRadius: BORDER_RADIUS.sm,
+    paddingVertical: 10, marginTop: SPACING.sm,
   },
-  searchBtnText: { color: COLORS.white, fontWeight: '700', fontSize: FONT_SIZES.md },
-  resultCount: { textAlign: 'center', fontSize: FONT_SIZES.xs, color: COLORS.textTertiary, marginTop: SPACING.sm },
+  clearBtnText: { color: COLORS.error, fontWeight: '600', fontSize: FONT_SIZES.sm },
+  resultRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: SPACING.md, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.borderLight,
+  },
+  resultCount: { fontSize: FONT_SIZES.sm, color: COLORS.primary, fontWeight: '600' },
 
   // ── Cards ──
   card: { 
     backgroundColor: COLORS.surface, 
     borderRadius: BORDER_RADIUS.lg, 
-    padding: 20, // Aumentado de 16 para 20
-    marginBottom: 20, // Mais distância entre itens
-    ...SHADOWS.sm 
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1, borderColor: COLORS.borderLight,
+    ...SHADOWS.md,
   },
   cardTopRow: { 
     flexDirection: 'row', 

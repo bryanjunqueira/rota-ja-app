@@ -1,5 +1,8 @@
 /**
  * Fretes Service — Camada de serviço para fretes/cargas (Mobile)
+ * 
+ * Queries otimizadas com filtros server-side via Supabase.
+ * Garante consistência: apenas fretes disponíveis e não aceitos.
  */
 import { supabase } from '@/lib/supabase';
 
@@ -49,21 +52,53 @@ export interface FreteData {
 }
 
 export const FretesService = {
+  /**
+   * Busca estatísticas do motorista
+   */
   async buscarEstatisticasMotorista(motoristaId: string, tipoVeiculo: string) {
     try {
       const { data, error } = await supabase
         .from('fretes')
         .select('status, tipo_veiculo, motorista_id')
-        .or(`motorista_id.eq.${motoristaId},and(status.eq.disponivel,tipo_veiculo.eq.${tipoVeiculo})`);
+        .or(`motorista_id.eq.${motoristaId},and(status.eq.disponivel,motorista_id.is.null)`);
       if (error) return { cargasDisponiveis: 0, cargasEmTransporte: 0, cargasTransportadas: 0 };
+
+      // Hierarquia de compatibilidade de veículos
+      const compativel = (tipoFrete: string) => {
+        const hierarquia: Record<string, string[]> = {
+          'Carreta': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck', 'Carreta'],
+          'Bitruck': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck'],
+          'Truck': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck'],
+          'Toco': ['Fiorino', 'Van', 'Caminhonete', 'Toco'],
+          'Caminhonete': ['Fiorino', 'Van', 'Caminhonete'],
+          'Van': ['Fiorino', 'Van'],
+          'Fiorino': ['Fiorino'],
+        };
+        const veiculosCompativeis = hierarquia[tipoVeiculo] || [tipoVeiculo];
+        return veiculosCompativeis.includes(tipoFrete);
+      };
+
       return {
-        cargasDisponiveis: data?.filter(f => f.status === 'disponivel' && f.tipo_veiculo === tipoVeiculo).length || 0,
-        cargasEmTransporte: data?.filter(f => ['aceito', 'em_transporte'].includes(f.status) && f.motorista_id === motoristaId).length || 0,
-        cargasTransportadas: data?.filter(f => f.status === 'entregue' && f.motorista_id === motoristaId).length || 0,
+        cargasDisponiveis: data?.filter(f =>
+          f.status === 'disponivel' &&
+          f.motorista_id === null &&
+          compativel(f.tipo_veiculo)
+        ).length || 0,
+        cargasEmTransporte: data?.filter(f =>
+          ['aceito', 'em_transporte'].includes(f.status) &&
+          f.motorista_id === motoristaId
+        ).length || 0,
+        cargasTransportadas: data?.filter(f =>
+          f.status === 'entregue' &&
+          f.motorista_id === motoristaId
+        ).length || 0,
       };
     } catch { return { cargasDisponiveis: 0, cargasEmTransporte: 0, cargasTransportadas: 0 }; }
   },
 
+  /**
+   * Busca cargas ativas do motorista (aceitas ou em transporte)
+   */
   async buscarCargasAtivas(motoristaId: string) {
     try {
       const { data, error } = await supabase
@@ -76,12 +111,17 @@ export const FretesService = {
     } catch { return { data: [], error: 'Erro inesperado.' }; }
   },
 
+  /**
+   * Busca cargas disponíveis para um tipo de veículo específico
+   * Garante: status=disponivel AND motorista_id IS NULL
+   */
   async buscarCargasDisponiveis(tipoVeiculo: string) {
     try {
       const { data, error } = await supabase
         .from('fretes')
         .select('id, origem_cidade, origem_estado, destino_cidade, destino_estado, valor_frete, data_coleta, prazo_entrega, peso, tipo_veiculo, volume, dimensao, pedagogio_incluso')
         .eq('status', 'disponivel')
+        .is('motorista_id', null)
         .eq('tipo_veiculo', tipoVeiculo)
         .order('created_at', { ascending: false });
       if (error) return { data: [], error: 'Não foi possível carregar cargas disponíveis.' };
@@ -91,7 +131,7 @@ export const FretesService = {
 
   /**
    * Busca todos os fretes disponíveis (sem filtro de veículo)
-   * com dados da empresa, igual ao TodosFretes do web
+   * com dados da empresa — GARANTE motorista_id IS NULL
    */
   async buscarTodosFretes() {
     try {
@@ -100,23 +140,80 @@ export const FretesService = {
         .select(`
           id, origem_cidade, origem_estado, destino_cidade, destino_estado,
           valor_frete, peso, tipo_veiculo, data_coleta, prazo_entrega,
-          status, volume,
+          status, volume, pedagogio_incluso,
           empresas ( nome_empresa, telefone )
         `)
         .eq('status', 'disponivel')
+        .is('motorista_id', null)
         .order('created_at', { ascending: false });
       if (error) return { data: [], error: 'Erro ao carregar fretes.' };
       return { data: data || [] };
     } catch { return { data: [], error: 'Erro inesperado.' }; }
   },
 
+  /**
+   * Busca fretes com filtros server-side (para empresa e motorista)
+   * Filtros: origem, destino, tipo de veículo
+   * Sempre retorna apenas disponíveis e não aceitos
+   */
+  async buscarFretesComFiltros(filtros: {
+    origemCidade?: string;
+    origemEstado?: string;
+    destinoCidade?: string;
+    destinoEstado?: string;
+    tipoVeiculo?: string;
+  }) {
+    try {
+      let query = supabase
+        .from('fretes')
+        .select(`
+          id, origem_cidade, origem_estado, destino_cidade, destino_estado,
+          valor_frete, peso, tipo_veiculo, data_coleta, prazo_entrega,
+          status, volume, pedagogio_incluso,
+          empresas ( nome_empresa, telefone )
+        `)
+        .eq('status', 'disponivel')
+        .is('motorista_id', null);
+
+      // Filtro por origem (cidade)
+      if (filtros.origemCidade) {
+        query = query.ilike('origem_cidade', `%${filtros.origemCidade}%`);
+      }
+      // Filtro por origem (estado)
+      if (filtros.origemEstado) {
+        query = query.eq('origem_estado', filtros.origemEstado);
+      }
+      // Filtro por destino (cidade)
+      if (filtros.destinoCidade) {
+        query = query.ilike('destino_cidade', `%${filtros.destinoCidade}%`);
+      }
+      // Filtro por destino (estado)
+      if (filtros.destinoEstado) {
+        query = query.eq('destino_estado', filtros.destinoEstado);
+      }
+      // Filtro por tipo de veículo
+      if (filtros.tipoVeiculo && filtros.tipoVeiculo !== 'Todos') {
+        query = query.eq('tipo_veiculo', filtros.tipoVeiculo);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+      if (error) return { data: [], error: 'Erro ao buscar fretes.' };
+      return { data: data || [] };
+    } catch { return { data: [], error: 'Erro inesperado.' }; }
+  },
+
+  /**
+   * Aceitar carga — Atualiza status atomicamente
+   * Garante: só aceita se ainda estiver disponível e sem motorista
+   */
   async aceitarCarga(freteId: string, motoristaId: string) {
     try {
       const { error } = await supabase
         .from('fretes')
         .update({ motorista_id: motoristaId, status: 'aceito', data_aceite: new Date().toISOString() })
         .eq('id', freteId)
-        .eq('status', 'disponivel');
+        .eq('status', 'disponivel')
+        .is('motorista_id', null);
       if (error) return { success: false, error: 'Carga já foi aceita por outro motorista.' };
       return { success: true };
     } catch { return { success: false, error: 'Erro inesperado ao aceitar carga.' }; }

@@ -5,6 +5,8 @@
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, FlatList } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/hooks/useAuth';
 import { FretesService } from '@/services';
 import { LoadingSpinner, Badge } from '@/components';
@@ -37,52 +39,67 @@ function DashboardMotorista() {
   const statusInfo = getStatusColor(status);
 
   return (
-    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}>
-      {/* Saudação */}
-      <View style={styles.greeting}>
-        <Text style={styles.greetingTitle}>Olá, {motorista.nome_completo.split(' ')[0]}!</Text>
-        <Text style={styles.greetingSubtitle}>Painel do Motorista</Text>
-      </View>
+    <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.white} />}>
+      {/* Header com gradiente */}
+      <LinearGradient colors={['#1565C0', '#1976D2', '#2094F3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroHeader}>
+        <View style={styles.heroTop}>
+          <View>
+            <Text style={styles.heroGreeting}>Olá, {motorista.nome_completo.split(' ')[0]} 👋</Text>
+            <Text style={styles.heroSub}>Painel do Motorista</Text>
+          </View>
+          <View style={[styles.heroBadge, { backgroundColor: statusInfo.bg }]}>
+            <Ionicons name={status === 'aprovado' ? 'checkmark-circle' : 'time-outline'} size={14} color={statusInfo.text} />
+            <Text style={[styles.heroBadgeText, { color: statusInfo.text }]}>{getStatusLabel(status)}</Text>
+          </View>
+        </View>
+        <View style={styles.heroVehicle}>
+          <Ionicons name="car-sport" size={16} color="rgba(255,255,255,0.8)" />
+          <Text style={styles.heroVehicleText}>{motorista.tipo_veiculo}</Text>
+        </View>
+      </LinearGradient>
 
       {/* Stats Cards */}
       <View style={styles.statsGrid}>
         <TouchableOpacity style={styles.statCard} onPress={() => router.push('/(app)/cargas')} activeOpacity={0.7}>
           <View style={[styles.statIconBg, { backgroundColor: COLORS.primaryFaded }]}>
-            <Text style={styles.statIconText}>C</Text>
+            <Ionicons name="cube-outline" size={20} color={COLORS.primary} />
           </View>
           <Text style={[styles.statValue, { color: COLORS.primary }]}>{stats.cargasDisponiveis}</Text>
           <Text style={styles.statLabel}>Disponíveis</Text>
           <Text style={styles.statDetail}>Para {motorista.tipo_veiculo}</Text>
         </TouchableOpacity>
 
-        <View style={styles.statCard}>
-          <View style={[styles.statIconBg, { backgroundColor: statusInfo.bg }]}>
-            <Text style={[styles.statIconText, { color: statusInfo.text }]}>S</Text>
-          </View>
-          <Badge variant={status === 'aprovado' ? 'success' : status === 'pendente' ? 'warning' : 'destructive'}>
-            {getStatusLabel(status)}
-          </Badge>
-          <Text style={styles.statDetail}>
-            {status === 'aprovado' ? 'Conta verificada' : status === 'pendente' ? 'Aguardando aprovação' : 'Contate suporte'}
-          </Text>
-        </View>
-
-        <View style={styles.statCard}>
+        <TouchableOpacity style={styles.statCard} onPress={() => router.push('/(app)/cargas')} activeOpacity={0.7}>
           <View style={[styles.statIconBg, { backgroundColor: COLORS.accentFaded }]}>
-            <Text style={[styles.statIconText, { color: COLORS.accent }]}>T</Text>
+            <Ionicons name="swap-horizontal" size={20} color={COLORS.accent} />
           </View>
           <Text style={[styles.statValue, { color: COLORS.accent }]}>{stats.cargasEmTransporte}</Text>
           <Text style={styles.statLabel}>Em Transporte</Text>
           <Text style={styles.statDetail}>Cargas ativas</Text>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.statCard}>
           <View style={[styles.statIconBg, { backgroundColor: COLORS.successLight }]}>
-            <Text style={[styles.statIconText, { color: COLORS.success }]}>E</Text>
+            <Ionicons name="checkmark-done" size={20} color={COLORS.success} />
           </View>
           <Text style={[styles.statValue, { color: COLORS.success }]}>{stats.cargasTransportadas}</Text>
           <Text style={styles.statLabel}>Entregues</Text>
           <Text style={styles.statDetail}>Concluídas</Text>
+        </View>
+
+        <View style={styles.statCardStatus}>
+          <View style={[styles.statIconBg, { backgroundColor: statusInfo.bg }]}>
+            <Ionicons name={status === 'aprovado' ? 'shield-checkmark' : 'hourglass-outline'} size={20} color={statusInfo.text} />
+          </View>
+          <View style={{ alignItems: 'center', gap: 4 }}>
+            <Text style={[styles.statLabel, { marginTop: 0 }]}>Status</Text>
+            <Badge variant={status === 'aprovado' ? 'success' : status === 'pendente' ? 'warning' : 'destructive'}>
+              {getStatusLabel(status)}
+            </Badge>
+          </View>
+          <Text style={styles.statDetail}>
+            {status === 'aprovado' ? 'Conta verificada' : status === 'pendente' ? 'Aguardando' : 'Contate suporte'}
+          </Text>
         </View>
       </View>
 
@@ -90,7 +107,7 @@ function DashboardMotorista() {
       {status !== 'aprovado' && (
         <View style={styles.warningCard}>
           <View style={styles.warningHeader}>
-            <View style={styles.warningDot} />
+            <Ionicons name="alert-circle" size={20} color={COLORS.warning} />
             <Text style={styles.warningTitle}>Atenção</Text>
           </View>
           <Text style={styles.warningText}>
@@ -104,14 +121,53 @@ function DashboardMotorista() {
 
       {/* Ações rápidas */}
       <View style={styles.actionsSection}>
+        <Text style={styles.sectionTitle}>Ações Rápidas</Text>
         <TouchableOpacity
           style={[styles.actionCard, status !== 'aprovado' && styles.actionDisabled]}
           onPress={() => status === 'aprovado' && router.push('/(app)/cargas')}
           activeOpacity={0.7}
           disabled={status !== 'aprovado'}
         >
-          <Text style={styles.actionTitle}>Buscar Cargas</Text>
-          <Text style={styles.actionDesc}>Encontre cargas disponíveis na sua região</Text>
+          <View style={[styles.actionIconBg, { backgroundColor: COLORS.primaryFaded }]}>
+            <Ionicons name="search" size={22} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionTitle}>Buscar Cargas</Text>
+            <Text style={styles.actionDesc}>Encontre cargas disponíveis na sua região</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionCard, status !== 'aprovado' && styles.actionDisabled]}
+          onPress={() => status === 'aprovado' && router.push('/(app)/perfil')}
+          activeOpacity={0.7}
+          disabled={status !== 'aprovado'}
+        >
+          <View style={[styles.actionIconBg, { backgroundColor: COLORS.accentFaded }]}>
+            <Ionicons name="person" size={22} color={COLORS.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionTitle}>Meu Perfil</Text>
+            <Text style={styles.actionDesc}>Visualize e edite seus dados cadastrais</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionCard, status !== 'aprovado' && styles.actionDisabled]}
+          onPress={() => status === 'aprovado' && router.push('/(app)/notificacoes')}
+          activeOpacity={0.7}
+          disabled={status !== 'aprovado'}
+        >
+          <View style={[styles.actionIconBg, { backgroundColor: COLORS.infoLight }]}>
+            <Ionicons name="notifications" size={22} color={COLORS.info} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionTitle}>Notificações</Text>
+            <Text style={styles.actionDesc}>Acompanhe suas atualizações</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textTertiary} />
         </TouchableOpacity>
       </View>
 
@@ -196,40 +252,39 @@ function DashboardEmpresa() {
           <Text style={styles.greetingTitle}>{empresa.nome_empresa}</Text>
           <Text style={styles.greetingSubtitle}>Painel da Empresa</Text>
         </View>
-        <TouchableOpacity style={styles.novoFreteBtn} onPress={() => router.push('/(app)/novo-frete')} activeOpacity={0.8}>
-          <Text style={styles.novoBtnPlus}>+</Text>
+        <TouchableOpacity style={styles.novoFreteBtn} onPress={() => router.push('/novo-frete')} activeOpacity={0.7}>
+          <Ionicons name="add-circle" size={18} color={COLORS.white} />
           <Text style={styles.novoBtnText}>Novo Frete</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Stats 4 cards — como no web PerfilEmpresa */}
+      {/* Stats 4 cards com ícones */}
       <View style={styles.empresaStatsRow}>
         <View style={styles.empresaStatCard}>
+          <Ionicons name="layers-outline" size={18} color={COLORS.primary} />
           <Text style={[styles.empresaStatValue, { color: COLORS.primary }]}>{stats.total}</Text>
           <Text style={styles.empresaStatLabel}>Total</Text>
         </View>
         <View style={styles.empresaStatCard}>
+          <Ionicons name="radio-button-on" size={18} color={COLORS.success} />
           <Text style={[styles.empresaStatValue, { color: COLORS.success }]}>{stats.ativos}</Text>
           <Text style={styles.empresaStatLabel}>Ativos</Text>
         </View>
         <View style={styles.empresaStatCard}>
+          <Ionicons name="swap-horizontal" size={18} color={COLORS.info} />
           <Text style={[styles.empresaStatValue, { color: COLORS.info }]}>{stats.andamento}</Text>
           <Text style={styles.empresaStatLabel}>Andamento</Text>
         </View>
         <View style={styles.empresaStatCard}>
-          <Text style={[styles.empresaStatValue, { color: COLORS.textTertiary }]}>{stats.finalizados}</Text>
+          <Ionicons name="checkmark-done" size={18} color={COLORS.success} />
+          <Text style={[styles.empresaStatValue, { color: COLORS.success }]}>{stats.finalizados}</Text>
           <Text style={styles.empresaStatLabel}>Finalizados</Text>
         </View>
       </View>
 
-      {/* Filtros tabs — como no web */}
+      {/* Filtros tabs */}
       <View style={styles.filtroSection}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={styles.sectionTitle}>Meus Fretes</Text>
-          <TouchableOpacity onPress={() => router.push('/(app)/novo-frete')}>
-            <Text style={{ color: COLORS.accent, fontSize: FONT_SIZES.sm, fontWeight: '600' }}>+ Publicar</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.sectionTitle}>Meus Fretes</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtroRow}>
           {filtros.map(f => (
             <TouchableOpacity
@@ -342,62 +397,90 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
 
-  // Greeting
-  greeting: { padding: SPACING.lg, paddingBottom: SPACING.sm },
+  // ── Hero Header (motorista) ──
+  heroHeader: {
+    paddingTop: 20, paddingBottom: 24, paddingHorizontal: SPACING.lg,
+    borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
+  },
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  heroGreeting: { fontSize: 24, fontWeight: '800', color: '#fff' },
+  heroSub: { fontSize: FONT_SIZES.sm, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  heroBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: BORDER_RADIUS.full,
+  },
+  heroBadgeText: { fontSize: 11, fontWeight: '700' },
+  heroVehicle: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.md,
+    backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'flex-start',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: BORDER_RADIUS.full,
+  },
+  heroVehicleText: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: '#fff' },
+
+  // ── Greeting (empresa) ──
   greetingRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, paddingBottom: SPACING.sm },
   greetingTitle: { fontSize: FONT_SIZES.xl, fontWeight: '700', color: COLORS.textPrimary },
   greetingSubtitle: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, marginTop: 2 },
   novoFreteBtn: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.accent,
-    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.full, ...SHADOWS.sm,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md, paddingVertical: 10,
+    borderRadius: BORDER_RADIUS.full, gap: 6, ...SHADOWS.md,
   },
-  novoBtnPlus: { fontSize: FONT_SIZES.lg, fontWeight: '700', color: COLORS.textPrimary, marginRight: 4 },
-  novoBtnText: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textPrimary },
+  novoBtnText: { fontSize: FONT_SIZES.sm, fontWeight: '700', color: COLORS.white },
 
   // ── Motorista Stats ──
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: SPACING.md, gap: SPACING.sm },
+  statsGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: SPACING.md,
+    gap: SPACING.sm, marginTop: -12,
+  },
   statCard: {
-    width: '48%', backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md, alignItems: 'center', ...SHADOWS.sm,
+    width: '47.5%', backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md, alignItems: 'center', ...SHADOWS.md,
+  },
+  statCardStatus: {
+    width: '47.5%', backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md, alignItems: 'center', justifyContent: 'center', ...SHADOWS.md,
   },
   statIconBg: {
-    width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.sm,
+    width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.sm,
   },
-  statIconText: { fontSize: FONT_SIZES.md, fontWeight: '800', color: COLORS.primary },
   statValue: { fontSize: FONT_SIZES.xxl, fontWeight: '800' },
-  statLabel: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textPrimary, marginTop: 2 },
-  statDetail: { fontSize: FONT_SIZES.xs, color: COLORS.textTertiary, marginTop: 2 },
+  statLabel: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textPrimary, marginTop: 4 },
+  statDetail: { fontSize: FONT_SIZES.xs, color: COLORS.textTertiary, marginTop: 2, textAlign: 'center' },
 
   // Warning card
   warningCard: {
-    margin: SPACING.lg, marginTop: SPACING.md, backgroundColor: COLORS.warningLight,
-    borderRadius: BORDER_RADIUS.md, padding: SPACING.md,
+    marginHorizontal: SPACING.lg, marginTop: SPACING.lg, backgroundColor: COLORS.warningLight,
+    borderRadius: BORDER_RADIUS.lg, padding: SPACING.md,
     borderWidth: 1, borderColor: COLORS.warning,
   },
-  warningHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  warningDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.warning, marginRight: SPACING.sm },
+  warningHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   warningTitle: { fontSize: FONT_SIZES.md, fontWeight: '700', color: '#92400E' },
   warningText: { fontSize: FONT_SIZES.sm, color: '#92400E', lineHeight: 20 },
 
   // Actions
-  actionsSection: { paddingHorizontal: SPACING.lg, marginTop: SPACING.md },
+  actionsSection: { paddingHorizontal: SPACING.lg, marginTop: SPACING.lg },
   actionCard: {
-    backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.lg, ...SHADOWS.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md, marginBottom: SPACING.sm, ...SHADOWS.sm,
   },
-  actionDisabled: { opacity: 0.5 },
-  actionTitle: { fontSize: FONT_SIZES.lg, fontWeight: '700', color: COLORS.primary },
-  actionDesc: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, marginTop: 4 },
+  actionIconBg: {
+    width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
+  },
+  actionDisabled: { opacity: 0.4 },
+  actionTitle: { fontSize: FONT_SIZES.md, fontWeight: '700', color: COLORS.textPrimary },
+  actionDesc: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 2 },
 
   // ── Empresa Stats ──
-  empresaStatsRow: { flexDirection: 'row', paddingHorizontal: SPACING.md, gap: SPACING.sm },
+  empresaStatsRow: { flexDirection: 'row', paddingHorizontal: SPACING.md, gap: SPACING.sm, marginTop: SPACING.sm },
   empresaStatCard: {
-    flex: 1, backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md, alignItems: 'center', ...SHADOWS.sm,
+    flex: 1, backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md, alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: COLORS.borderLight, ...SHADOWS.sm,
   },
   empresaStatValue: { fontSize: FONT_SIZES.xl, fontWeight: '800' },
-  empresaStatLabel: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 2, fontWeight: '500' },
+  empresaStatLabel: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600' },
 
   // Filtros
   filtroSection: { paddingHorizontal: SPACING.lg, marginTop: SPACING.lg },
@@ -417,9 +500,9 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: FONT_SIZES.sm, color: COLORS.textSecondary, textAlign: 'center', marginTop: 4 },
 
   freteCard: {
-    marginHorizontal: SPACING.lg, marginBottom: SPACING.sm,
-    backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md, ...SHADOWS.sm,
+    marginHorizontal: SPACING.lg, marginBottom: SPACING.md,
+    backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.borderLight, ...SHADOWS.sm,
   },
   freteHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm },
   freteId: { fontSize: FONT_SIZES.sm, fontWeight: '600', color: COLORS.textPrimary },
