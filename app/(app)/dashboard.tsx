@@ -4,20 +4,22 @@
  * Motorista: stats + situação cadastral + ações rápidas
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, FlatList, Alert, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/hooks/useAuth';
-import { FretesService } from '@/services';
-import { LoadingSpinner, Badge } from '@/components';
+import { FretesService, NotificacoesService } from '@/services';
+import { LoadingSpinner, Badge, CancelModal } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─── DASHBOARD MOTORISTA ───
 
 function DashboardMotorista() {
   const { motorista } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [stats, setStats] = useState({ cargasDisponiveis: 0, cargasEmTransporte: 0, cargasTransportadas: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,15 +43,22 @@ function DashboardMotorista() {
   return (
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.white} />}>
       {/* Header com gradiente */}
-      <LinearGradient colors={['#1565C0', '#1976D2', '#2094F3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroHeader}>
+      <LinearGradient colors={['#1565C0', '#1976D2', '#2094F3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.heroHeader, { paddingTop: insets.top + 30 }]}>
         <View style={styles.heroTop}>
           <View>
             <Text style={styles.heroGreeting}>Olá, {motorista.nome_completo.split(' ')[0]} 👋</Text>
             <Text style={styles.heroSub}>Painel do Motorista</Text>
           </View>
-          <View style={[styles.heroBadge, { backgroundColor: statusInfo.bg }]}>
-            <Ionicons name={status === 'aprovado' ? 'checkmark-circle' : 'time-outline'} size={14} color={statusInfo.text} />
-            <Text style={[styles.heroBadgeText, { color: statusInfo.text }]}>{getStatusLabel(status)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={[styles.heroBadge, { backgroundColor: statusInfo.bg }]}>
+              <Ionicons name={status === 'aprovado' ? 'checkmark-circle' : 'time-outline'} size={14} color={statusInfo.text} />
+              <Text style={[styles.heroBadgeText, { color: statusInfo.text }]}>{getStatusLabel(status)}</Text>
+            </View>
+            <TouchableOpacity onPress={() => router.push('/(auth)/planos')} activeOpacity={0.7}>
+              <LinearGradient colors={['#FFD700', '#FFA500']} style={styles.crownCircleSmall}>
+                <Ionicons name="ribbon" size={16} color="#fff" />
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </View>
         <View style={styles.heroVehicle}>
@@ -181,11 +190,30 @@ function DashboardMotorista() {
 function DashboardEmpresa() {
   const { user, empresa } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [fretes, setFretes] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, ativos: 0, andamento: 0, finalizados: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filtro, setFiltro] = useState('todos');
+
+  // Ações do Frete
+  const [selectedFrete, setSelectedFrete] = useState<any>(null);
+  const [selectedFreteId, setSelectedFreteId] = useState<string | null>(null);
+  const [actionMenuVisible, setActionMenuVisible] = useState<string | null>(null);
+  const [detailsVisible, setDetailsVisible] = useState(false);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  const MOTIVOS_CANCELAMENTO = [
+    'Não tenho mais interesse',
+    'Frete cancelado pela empresa',
+    'Dados da carga incorretos',
+    'Problema operacional/logístico',
+    'Motorista incompatível',
+    'Carga indisponível no momento',
+    'Outro motivo'
+  ];
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -200,6 +228,31 @@ function DashboardEmpresa() {
 
   useEffect(() => { load(); }, [load]);
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+
+  const handleCancelar = async (motivo: string, mensagem: string) => {
+    if (!selectedFreteId) return;
+    setCancelling(true);
+
+    const frete = fretes.find(f => f.id === selectedFreteId);
+    const result = await FretesService.cancelarFrete(selectedFreteId, motivo, mensagem);
+
+    if (result.success) {
+      if (frete?.motorista_id) {
+        await NotificacoesService.enviar(
+          frete.motorista_id,
+          'Frete cancelado pela empresa',
+          `A empresa ${empresa?.nome_empresa} cancelou o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}`,
+          selectedFreteId
+        );
+      }
+      Alert.alert('Sucesso', 'Frete cancelado com sucesso.');
+      load();
+      setCancelModalVisible(false);
+    } else {
+      Alert.alert('Erro', result.error || 'Erro ao cancelar frete.');
+    }
+    setCancelling(false);
+  };
 
   if (loading) return <LoadingSpinner message="Carregando painel..." />;
   if (!empresa) return null;
@@ -247,11 +300,16 @@ function DashboardEmpresa() {
   return (
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}>
       {/* Saudação empresa + botão novo frete */}
-      <View style={styles.greetingRow}>
+      <View style={[styles.greetingRow, { paddingTop: insets.top + 30 }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.greetingTitle}>{empresa.nome_empresa}</Text>
           <Text style={styles.greetingSubtitle}>Painel da Empresa</Text>
         </View>
+        <TouchableOpacity onPress={() => router.push('/(auth)/planos')} activeOpacity={0.7} style={{ marginRight: 12 }}>
+          <LinearGradient colors={['#FFD700', '#FFA500']} style={styles.crownCircleSmall}>
+            <Ionicons name="ribbon" size={16} color="#fff" />
+          </LinearGradient>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.novoFreteBtn} onPress={() => router.push('/novo-frete')} activeOpacity={0.7}>
           <Ionicons name="add-circle" size={18} color={COLORS.white} />
           <Text style={styles.novoBtnText}>Novo Frete</Text>
@@ -310,14 +368,47 @@ function DashboardEmpresa() {
         </View>
       ) : (
         fretesFiltrados.map(frete => (
-          <View key={frete.id} style={styles.freteCard}>
+          <View 
+            key={frete.id} 
+            style={[styles.freteCard, { position: 'relative', zIndex: actionMenuVisible === frete.id ? 100 : 1 }]}
+          >
             <View style={styles.freteHeader}>
-              <Text style={styles.freteId}>Frete #{frete.id?.slice(0, 8)}</Text>
-              <View style={[styles.freteStatusBadge, { backgroundColor: getStatusColor(frete.status).bg }]}>
-                <Text style={[styles.freteStatusText, { color: getStatusColor(frete.status).text }]}>
-                  {getStatusLabel(frete.status)}
-                </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.freteId}>Frete #{frete.id?.slice(0, 8)}</Text>
               </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={[styles.freteStatusBadge, { backgroundColor: getStatusColor(frete.status).bg }]}>
+                  <Text style={[styles.freteStatusText, { color: getStatusColor(frete.status).text }]}>
+                    {getStatusLabel(frete.status)}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={{ padding: 4 }}
+                  onPress={() => setActionMenuVisible(actionMenuVisible === frete.id ? null : frete.id)}
+                >
+                  <Ionicons name="ellipsis-vertical" size={20} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Janelinha branca de Ações */}
+              {actionMenuVisible === frete.id && (
+                <View style={[styles.popoverMenu, { right: 0, top: 40 }]}>
+                  <TouchableOpacity 
+                    style={styles.popoverItem}
+                    onPress={() => { setActionMenuVisible(null); setSelectedFrete(frete); setDetailsVisible(true); }}
+                  >
+                    <Text style={styles.popoverText}>Ver Detalhes</Text>
+                  </TouchableOpacity>
+                  {(frete.status !== 'cancelado_empresa' && frete.status !== 'entregue') && (
+                    <TouchableOpacity 
+                      style={[styles.popoverItem, { borderBottomWidth: 0 }]}
+                      onPress={() => { setActionMenuVisible(null); setSelectedFreteId(frete.id); setCancelModalVisible(true); }}
+                    >
+                      <Text style={[styles.popoverText, { color: COLORS.error }]}>Excluir</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
             </View>
 
             <View style={styles.freteRoute}>
@@ -368,6 +459,240 @@ function DashboardEmpresa() {
       )}
 
       <View style={{ height: SPACING.xxl }} />
+
+      {/* ActionMenu foi removido e substituído pela janelinha inline no View freteCard */}
+
+      {/* Modal de Detalhes Empresa */}
+      <Modal visible={detailsVisible} animationType="slide" transparent statusBarTranslucent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentDetail}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="document-text" size={22} color={COLORS.primary} />
+                <Text style={styles.modalTitle}>Revisão do Frete</Text>
+              </View>
+              <TouchableOpacity onPress={() => setDetailsVisible(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ padding: 20 }}>
+              <View style={[styles.freteStatusBadge, { 
+                backgroundColor: getStatusColor(selectedFrete?.status || '').bg,
+                alignSelf: 'flex-start',
+                paddingHorizontal: 15,
+                paddingVertical: 6,
+                marginBottom: 20
+              }]}>
+                <Text style={[styles.freteStatusText, { 
+                  color: getStatusColor(selectedFrete?.status || '').text,
+                  fontSize: 14
+                }]}>
+                  {getStatusLabel(selectedFrete?.status || '')}
+                </Text>
+              </View>
+
+              {/* Informações do Motorista (se houver) */}
+              {selectedFrete?.motoristas ? (
+                <View style={styles.detailSection}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="person" size={18} color={COLORS.primary} />
+                    <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+                  </View>
+                  <View style={styles.sectionBody}>
+                    <Text style={styles.detailText}>
+                      <Text style={styles.detailLabelModal}>Nome: </Text>
+                      {selectedFrete.motoristas.nome_completo}
+                    </Text>
+                    <Text style={styles.detailText}>
+                      <Text style={styles.detailLabelModal}>Celular: </Text>
+                      {selectedFrete.motoristas.celular}
+                    </Text>
+                    <Text style={styles.detailText}>
+                      <Text style={styles.detailLabelModal}>Veículo: </Text>
+                      {selectedFrete.motoristas.tipo_veiculo}
+                    </Text>
+                    <Text style={styles.detailText}>
+                      <Text style={styles.detailLabelModal}>Placa: </Text>
+                      {selectedFrete.motoristas.placa_veiculo || 'Não informada'}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.detailSection}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="person" size={18} color={COLORS.textSecondary} />
+                    <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+                  </View>
+                  <View style={styles.sectionBody}>
+                    <Text style={styles.detailText}>Nenhum motorista aceitou este frete ainda.</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Rota Detalhada */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="map" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Rota e Endereços</Text>
+                </View>
+                <View style={styles.sectionBody}>
+                  <View style={styles.addressBox}>
+                    <Text style={[styles.addressType, { color: COLORS.primary }]}>RETIRADA</Text>
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.endereco_retirada}, {selectedFrete?.numero_retirada}
+                    </Text>
+                    {selectedFrete?.complemento_retirada && (
+                      <Text style={styles.addressText}>{selectedFrete.complemento_retirada}</Text>
+                    )}
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.origem_cidade} - {selectedFrete?.origem_estado}
+                    </Text>
+                    <Text style={styles.addressText}>CEP: {selectedFrete?.cep_retirada}</Text>
+                  </View>
+
+                  <View style={[styles.addressBox, { marginTop: 12 }]}>
+                    <Text style={[styles.addressType, { color: COLORS.accent }]}>ENTREGA</Text>
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.endereco_entrega}, {selectedFrete?.numero_entrega}
+                    </Text>
+                    {selectedFrete?.complemento_entrega && (
+                      <Text style={styles.addressText}>{selectedFrete.complemento_entrega}</Text>
+                    )}
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.destino_cidade} - {selectedFrete?.destino_estado}
+                    </Text>
+                    <Text style={styles.addressText}>CEP: {selectedFrete?.cep_entrega}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Dados da Carga */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="list" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Especificações</Text>
+                </View>
+                <View style={[styles.sectionBody, { flexDirection: 'row', flexWrap: 'wrap' }]}>
+                  <View style={{ width: '50%', marginBottom: 10 }}>
+                    <Text style={styles.detailLabelModal}>Volume</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.volume || 'N/I'}</Text>
+                  </View>
+                  <View style={{ width: '50%', marginBottom: 10 }}>
+                    <Text style={styles.detailLabelModal}>Peso</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.peso} kg</Text>
+                  </View>
+                  <View style={{ width: '50%' }}>
+                    <Text style={styles.detailLabelModal}>Dimensões</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.dimensao || 'N/I'}</Text>
+                  </View>
+                  <View style={{ width: '50%' }}>
+                    <Text style={styles.detailLabelModal}>Veículo</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.tipo_veiculo}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Datas */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="calendar" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Cronograma</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={styles.detailLabelModal}>Coleta</Text>
+                    <Text style={styles.detailText}>
+                      {selectedFrete ? new Date(selectedFrete.data_coleta).toLocaleDateString('pt-BR') : ''}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.detailLabelModal}>Prazo de Entrega</Text>
+                    <Text style={styles.detailText}>
+                      {selectedFrete ? new Date(selectedFrete.prazo_entrega).toLocaleDateString('pt-BR') : ''}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Linha do Tempo (Timeline) */}
+              {(selectedFrete?.data_aceite || selectedFrete?.data_inicio_transporte || selectedFrete?.data_entrega || selectedFrete?.data_cancelamento || selectedFrete?.data_devolucao) && (
+                <View style={styles.detailSection}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="time" size={18} color={COLORS.primary} />
+                    <Text style={styles.sectionTitleModal}>Linha do Tempo</Text>
+                  </View>
+                  <View style={styles.sectionBody}>
+                    {selectedFrete?.data_aceite && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Aceito em: </Text>
+                          {new Date(selectedFrete.data_aceite).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_inicio_transporte && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                        <Ionicons name="play-circle" size={16} color={COLORS.info} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Transporte iniciado: </Text>
+                          {new Date(selectedFrete.data_inicio_transporte).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_entrega && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                        <Ionicons name="flag" size={16} color={COLORS.primary} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Entregue em: </Text>
+                          {new Date(selectedFrete.data_entrega).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_cancelamento && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                        <Ionicons name="close-circle" size={16} color={COLORS.error} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Cancelado em: </Text>
+                          {new Date(selectedFrete.data_cancelamento).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_devolucao && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                        <Ionicons name="arrow-undo" size={16} color={COLORS.error} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Devolvido em: </Text>
+                          {new Date(selectedFrete.data_devolucao).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              <View style={[styles.valorCardModal, { marginBottom: 30 }]}>
+                <Text style={styles.valorLabelModal}>Valor do Frete</Text>
+                <Text style={styles.valorTextModal}>
+                  R$ {selectedFrete ? Number(selectedFrete.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}
+                </Text>
+              </View>
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <CancelModal
+        visible={cancelModalVisible}
+        onClose={() => setCancelModalVisible(false)}
+        onConfirm={handleCancelar}
+        title="Cancelar Frete"
+        subtitle="Esta ação registrará o cancelamento e o motivo no histórico do sistema."
+        reasons={MOTIVOS_CANCELAMENTO}
+        loading={cancelling}
+      />
     </ScrollView>
   );
 }
@@ -556,4 +881,54 @@ const styles = StyleSheet.create({
   noRoleIconText: { fontSize: 28, fontWeight: '800', color: COLORS.textSecondary },
   noRoleTitle: { fontSize: FONT_SIZES.lg, fontWeight: '700', color: COLORS.textPrimary, marginTop: SPACING.md },
   noRoleText: { fontSize: FONT_SIZES.md, color: COLORS.textSecondary, textAlign: 'center', marginTop: SPACING.sm },
+  
+  crownCircleSmall: {
+    width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', ...SHADOWS.md
+  },
+  actionBtnCircle: {
+    width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.primaryFaded,
+    justifyContent: 'center', alignItems: 'center'
+  },
+  popoverMenu: {
+    position: 'absolute',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 4,
+    minWidth: 120,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 1000,
+  },
+  popoverItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  popoverText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContentDetail: { backgroundColor: COLORS.background, borderTopLeftRadius: 32, borderTopRightRadius: 32, height: '85%', paddingBottom: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary },
+  detailSection: { marginBottom: 20 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  sectionTitleModal: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  sectionBody: { backgroundColor: COLORS.surface, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.borderLight },
+  detailText: { fontSize: 14, color: COLORS.textPrimary, marginBottom: 4 },
+  detailLabelModal: { fontWeight: '600', color: COLORS.textSecondary },
+  addressBox: { backgroundColor: COLORS.background, padding: 12, borderRadius: 12 },
+  addressType: { fontSize: 11, fontWeight: '800', marginBottom: 4 },
+  addressText: { fontSize: 14, color: COLORS.textPrimary },
+  motoristaNameDetail: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  motoristaContactDetail: { fontSize: 14, color: COLORS.textSecondary },
+  valorCardModal: { backgroundColor: COLORS.successLight, padding: 24, borderRadius: 16, alignItems: 'center', marginTop: 10 },
+  valorLabelModal: { fontSize: 13, color: COLORS.success, fontWeight: '700' },
+  valorTextModal: { fontSize: 28, fontWeight: '900', color: COLORS.success, marginTop: 4 },
 });

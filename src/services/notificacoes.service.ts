@@ -65,4 +65,18 @@ export const NotificacoesService = {
 
     return () => { supabase.removeChannel(channel); };
   },
+
+  async enviar(userId: string, titulo: string, mensagem: string, freteId?: string) {
+    try {
+      const { error } = await supabase.from('notificacoes').insert({
+        usuario_id: userId,
+        titulo,
+        mensagem,
+        lida: false,
+        frete_id: freteId || null
+      });
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch { return { success: false }; }
+  },
 };

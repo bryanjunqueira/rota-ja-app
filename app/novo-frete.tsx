@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity, Alert, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { FretesService, CriarFreteData } from '@/services/fretes.service';
 import { Button, Input } from '@/components';
@@ -15,6 +16,7 @@ const TIPOS_VEICULOS = ['Carreta', 'Truck', 'Toco', 'VUC', 'Bitrem', 'Fiorino', 
 export default function NovoFreteScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1); // 1: rota, 2: endereços, 3: carga+valor
   const [pedagogio, setPedagogio] = useState(false);
@@ -117,7 +119,7 @@ export default function NovoFreteScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : router.back()}>
             <Text style={styles.backText}>← {step > 1 ? 'Voltar' : 'Cancelar'}</Text>
           </TouchableOpacity>

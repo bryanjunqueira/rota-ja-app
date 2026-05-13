@@ -7,6 +7,7 @@ import {
   View, Text, StyleSheet, ScrollView, Alert,
   TouchableOpacity, Image, ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
@@ -103,6 +104,7 @@ export default function PerfilScreen() {
 // MOTORISTA
 // ═══════════════════════════════════════
 function PerfilMotorista({ motorista, user, editing, saving, uploading, onEdit, onLogout, onUpload, onSave, onCancel }: any) {
+  const insets = useSafeAreaInsets();
   const [form, setForm] = useState({
     celular: motorista.celular || '',
     endereco: motorista.endereco || '',
@@ -116,7 +118,7 @@ function PerfilMotorista({ motorista, user, editing, saving, uploading, onEdit, 
   return (
     <ScrollView style={st.container} showsVerticalScrollIndicator={false}>
       {/* Gradient Header */}
-      <LinearGradient colors={['#1976D2', '#2094F3', '#4DA9F5']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.gradientHeader}>
+      <LinearGradient colors={['#1976D2', '#2094F3', '#4DA9F5']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[st.gradientHeader, { paddingTop: insets.top + 20 }]}>
         <TouchableOpacity onPress={onUpload} activeOpacity={0.8} style={st.avatarWrap}>
           {hasPhoto ? (
             <Image source={{ uri: motorista.foto_motorista_url }} style={st.avatarImg} />
@@ -200,6 +202,7 @@ function PerfilMotorista({ motorista, user, editing, saving, uploading, onEdit, 
 // EMPRESA
 // ═══════════════════════════════════════
 function PerfilEmpresa({ empresa, user, editing, saving, onEdit, onLogout, onSave, onCancel }: any) {
+  const insets = useSafeAreaInsets();
   const [form, setForm] = useState({
     telefone: empresa.telefone || '',
     endereco: empresa.endereco || '',
@@ -215,7 +218,7 @@ function PerfilEmpresa({ empresa, user, editing, saving, onEdit, onLogout, onSav
   return (
     <ScrollView style={st.container} showsVerticalScrollIndicator={false}>
       {/* Gradient Header — amber/orange for empresa */}
-      <LinearGradient colors={['#E89D1E', '#FFB224', '#FFC55C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.gradientHeader}>
+      <LinearGradient colors={['#E89D1E', '#FFB224', '#FFC55C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[st.gradientHeader, { paddingTop: insets.top + 20 }]}>
         <View style={st.avatarWrap}>
           <View style={[st.avatarPlaceholder, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
             <Text style={st.avatarLetter}>{empresa.nome_empresa?.charAt(0)?.toUpperCase()}</Text>

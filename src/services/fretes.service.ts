@@ -141,7 +141,7 @@ export const FretesService = {
     try {
       const { data, error } = await supabase
         .from('fretes')
-        .select('id, origem_cidade, origem_estado, destino_cidade, destino_estado, valor_frete, data_coleta, prazo_entrega, peso, tipo_veiculo, volume, dimensao, pedagogio_incluso')
+        .select('id, user_id, origem_cidade, origem_estado, destino_cidade, destino_estado, valor_frete, data_coleta, prazo_entrega, peso, tipo_veiculo, volume, dimensao, pedagogio_incluso')
         .eq('status', 'disponivel')
         .is('motorista_id', null)
         .eq('tipo_veiculo', tipoVeiculo)
@@ -160,7 +160,7 @@ export const FretesService = {
       const { data, error } = await supabase
         .from('fretes')
         .select(`
-          id, origem_cidade, origem_estado, destino_cidade, destino_estado,
+          id, user_id, origem_cidade, origem_estado, destino_cidade, destino_estado,
           valor_frete, peso, tipo_veiculo, data_coleta, prazo_entrega,
           status, volume, dimensao, pedagogio_incluso,
           endereco_retirada, numero_retirada, complemento_retirada, cep_retirada,
@@ -192,7 +192,7 @@ export const FretesService = {
       let query = supabase
         .from('fretes')
         .select(`
-          id, origem_cidade, origem_estado, destino_cidade, destino_estado,
+          id, user_id, origem_cidade, origem_estado, destino_cidade, destino_estado,
           valor_frete, peso, tipo_veiculo, data_coleta, prazo_entrega,
           status, volume, dimensao, pedagogio_incluso,
           endereco_retirada, numero_retirada, complemento_retirada, cep_retirada,
@@ -338,6 +338,55 @@ export const FretesService = {
       return { success: true };
     } catch {
       return { success: false, error: 'Erro inesperado ao cadastrar frete.' };
+    }
+  },
+
+  /**
+   * Cancelar frete (Empresa)
+   * A empresa desiste de realizar o frete.
+   */
+  async cancelarFrete(freteId: string, motivo: string, mensagem?: string) {
+    try {
+      const { error } = await supabase
+        .from('fretes')
+        .update({ 
+          status: 'cancelado_empresa', 
+          motivo_cancelamento: motivo,
+          mensagem_cancelamento: mensagem || null,
+          data_cancelamento: new Date().toISOString()
+        })
+        .eq('id', freteId);
+      
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (e: any) { 
+      return { success: false, error: e.message || 'Erro inesperado.' }; 
+    }
+  },
+
+  /**
+   * Devolver frete (Motorista)
+   * O motorista desiste de realizar o frete aceito.
+   * O frete volta a ficar 'disponivel' para outros motoristas.
+   */
+  async devolverFrete(freteId: string, motivo: string, mensagem?: string) {
+    try {
+      const { error } = await supabase
+        .from('fretes')
+        .update({ 
+          status: 'disponivel', 
+          motorista_id: null,
+          data_aceite: null,
+          motivo_devolucao: motivo,
+          mensagem_devolucao: mensagem || null,
+          data_devolucao: new Date().toISOString()
+        })
+        .eq('id', freteId);
+      
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (e: any) { 
+      return { success: false, error: e.message || 'Erro inesperado.' }; 
     }
   },
 };

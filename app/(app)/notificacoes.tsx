@@ -7,10 +7,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { NotificacoesService, Notificacao } from '@/services';
 import { LoadingSpinner } from '@/components';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
 
 export default function NotificacoesScreen() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,7 +44,7 @@ export default function NotificacoesScreen() {
   const temNaoLidas = notificacoes.some(n => !n.lida);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 20 }]}>
       {temNaoLidas && (
         <TouchableOpacity style={styles.markAllBtn} onPress={handleMarcarTodas} activeOpacity={0.7}>
           <Ionicons name="checkmark-done-outline" size={18} color={COLORS.primary} />

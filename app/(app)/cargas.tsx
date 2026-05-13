@@ -9,9 +9,10 @@ import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { FretesService } from '@/services';
-import { LoadingSpinner, CidadeEstadoSelect, Button } from '@/components';
+import { FretesService, NotificacoesService } from '@/services';
+import { LoadingSpinner, CidadeEstadoSelect, Button, CancelModal } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 
@@ -34,9 +35,55 @@ export default function CargasScreen() {
 
 function CargasMotorista() {
   const { motorista } = useAuth();
+  const insets = useSafeAreaInsets();
   const [allCargas, setAllCargas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [viewMode, setViewMode] = useState<'disponiveis' | 'minhas'>('disponiveis');
+  
+  // Controle do Modal de Devolução
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [selectedFreteId, setSelectedFreteId] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  const MOTIVOS_DEVOLUCAO = [
+    'Problema mecânico no veículo',
+    'Não consigo realizar o transporte',
+    'Distância inviável/Erro de rota',
+    'Problema pessoal urgente',
+    'Dados da carga incompatíveis',
+    'Outro motivo'
+  ];
+
+  const handleDevolver = async (motivo: string, mensagem: string) => {
+    if (!selectedFreteId) return;
+    setCancelling(true);
+    
+    // 1. Pega dados do frete antes de devolver para notificar a empresa
+    const frete = allCargas.find(f => f.id === selectedFreteId);
+    
+    // 2. Devolve o frete
+    const result = await FretesService.devolverFrete(selectedFreteId, motivo, mensagem);
+    
+    if (result.success) {
+      // 3. Notifica a empresa
+      if (frete?.user_id) {
+        await NotificacoesService.enviar(
+          frete.user_id,
+          'Carga devolvida pelo motorista',
+          `O motorista ${motorista?.nome_completo} devolveu o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}`,
+          selectedFreteId
+        );
+      }
+      
+      Alert.alert('Sucesso', 'Frete devolvido. Ele voltará a ficar disponível para outros motoristas.');
+      loadCargas(); // Recarrega lista
+      setCancelModalVisible(false);
+    } else {
+      Alert.alert('Erro', result.error);
+    }
+    setCancelling(false);
+  };
 
   // Filtros (iguais ao web CargasDisponiveisMotorista)
   const [filtroOrigem, setFiltroOrigem] = useState('');
@@ -44,7 +91,6 @@ function CargasMotorista() {
   const [distanciaMaxima, setDistanciaMaxima] = useState(1000);
   const [selectedFrete, setSelectedFrete] = useState<any>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
-  const [viewMode, setViewMode] = useState<'disponiveis' | 'minhas'>('disponiveis');
   const [minhasCargas, setMinhasCargas] = useState<any[]>([]);
 
   const loadCargas = useCallback(async () => {
@@ -143,7 +189,7 @@ function CargasMotorista() {
   if (loading) return <LoadingSpinner message="Carregando cargas..." />;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 20 }]}>
       {/* Toggle View Mode */}
       <View style={styles.viewToggle}>
         <TouchableOpacity
@@ -257,7 +303,7 @@ function CargasMotorista() {
           </View>
         }
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <View style={[styles.card, { position: 'relative', zIndex: actionMenuVisible === item.id ? 100 : 1 }]}>
             {/* Empresa + Badge veículo */}
             <View style={styles.cardTopRow}>
               <View style={{ flex: 1 }}>
@@ -272,9 +318,43 @@ function CargasMotorista() {
                   </View>
                 )}
               </View>
-              <View style={styles.vehicleBadge}>
-                <Text style={styles.vehicleBadgeText}>{item.tipo_veiculo}</Text>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <View style={styles.vehicleBadge}>
+                  <Text style={styles.vehicleBadgeText}>{item.tipo_veiculo}</Text>
+                </View>
+                <TouchableOpacity 
+                  style={{ padding: 4 }}
+                  onPress={() => {
+                    if (viewMode === 'minhas') {
+                      setActionMenuVisible(actionMenuVisible === item.id ? null : item.id);
+                    } else {
+                      handleOpenDetails(item);
+                    }
+                  }}
+                >
+                  <Ionicons name={viewMode === 'minhas' ? "ellipsis-vertical" : "chevron-forward"} size={20} color={COLORS.textSecondary} />
+                </TouchableOpacity>
               </View>
+
+              {/* Janelinha branca de Ações */}
+              {actionMenuVisible === item.id && (
+                <View style={[styles.popoverMenu, { right: 0, top: 40 }]}>
+                  <TouchableOpacity 
+                    style={styles.popoverItem}
+                    onPress={() => { setActionMenuVisible(null); handleOpenDetails(item); }}
+                  >
+                    <Text style={styles.popoverText}>Ver Detalhes</Text>
+                  </TouchableOpacity>
+                  {(item.status === 'aceito' || item.status === 'em_transporte') && viewMode === 'minhas' && (
+                    <TouchableOpacity 
+                      style={[styles.popoverItem, { borderBottomWidth: 0 }]}
+                      onPress={() => { setActionMenuVisible(null); setSelectedFreteId(item.id); setCancelModalVisible(true); }}
+                    >
+                      <Text style={[styles.popoverText, { color: COLORS.error }]}>Devolver</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
             </View>
 
             {/* Rota */}
@@ -363,6 +443,8 @@ function CargasMotorista() {
         )}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
       />
+
+      {/* ActionMenu foi removido e substituído pela janelinha inline no FlatList */}
 
       {/* Modal de Detalhes da Carga */}
       <Modal visible={detailsVisible} animationType="slide" transparent>
@@ -554,6 +636,16 @@ function CargasMotorista() {
           </View>
         </View>
       </Modal>
+
+      <CancelModal
+        visible={cancelModalVisible}
+        onClose={() => setCancelModalVisible(false)}
+        onConfirm={handleDevolver}
+        title="Devolver Frete"
+        subtitle="Tem certeza que deseja desistir deste frete? Ele voltará para a lista pública."
+        reasons={MOTIVOS_DEVOLUCAO}
+        loading={cancelling}
+      />
     </View>
   );
 }
@@ -565,6 +657,8 @@ function CargasMotorista() {
 
 function CargasEmpresa({ userId }: { userId: string }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { empresa } = useAuth();
   const [fretes, setFretes] = useState<any[]>([]);
   const [allPublicFretes, setAllPublicFretes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -572,12 +666,57 @@ function CargasEmpresa({ userId }: { userId: string }) {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Controle do Modal de Cancelamento
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [selectedFreteId, setSelectedFreteId] = useState<string | null>(null);
+  const [selectedFrete, setSelectedFrete] = useState<any>(null);
+  const [detailsVisible, setDetailsVisible] = useState(false);
+  const [actionMenuVisible, setActionMenuVisible] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  const MOTIVOS_CANCELAMENTO = [
+    'Não tenho mais interesse',
+    'Frete cancelado pela empresa',
+    'Dados da carga incorretos',
+    'Problema operacional/logístico',
+    'Motorista incompatível',
+    'Carga indisponível no momento',
+    'Outro motivo'
+  ];
+
   const load = useCallback(async () => {
     if (!userId) return;
     const { data } = await FretesService.buscarFretesEmpresa(userId);
     setFretes(data);
     setLoading(false);
   }, [userId]);
+
+  const handleCancelar = async (motivo: string, mensagem: string) => {
+    if (!selectedFreteId) return;
+    setCancelling(true);
+
+    const frete = fretes.find(f => f.id === selectedFreteId);
+    const result = await FretesService.cancelarFrete(selectedFreteId, motivo, mensagem);
+
+    if (result.success) {
+      // Notifica o motorista se houver um vinculado
+      if (frete?.motorista_id) {
+        await NotificacoesService.enviar(
+          frete.motorista_id,
+          'Frete cancelado pela empresa',
+          `A empresa ${empresa?.nome_empresa} cancelou o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}`,
+          selectedFreteId
+        );
+      }
+
+      Alert.alert('Sucesso', 'Frete cancelado com sucesso.');
+      load();
+      setCancelModalVisible(false);
+    } else {
+      Alert.alert('Erro', result.error);
+    }
+    setCancelling(false);
+  };
 
   const loadPublicFretes = async () => {
     const { data } = await FretesService.buscarTodosFretes();
@@ -602,7 +741,7 @@ function CargasEmpresa({ userId }: { userId: string }) {
   if (loading) return <LoadingSpinner message="Carregando fretes..." />;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 20 }]}>
       <FlatList
         data={fretes}
         keyExtractor={item => item.id}
@@ -637,14 +776,42 @@ function CargasEmpresa({ userId }: { userId: string }) {
           </View>
         }
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <View style={[styles.card, { position: 'relative', zIndex: actionMenuVisible === item.id ? 100 : 1 }]}>
             <View style={styles.cardTopRow}>
               <Text style={styles.freteId}>#{item.id?.slice(0, 8)}</Text>
-              <View style={[styles.statusPill, { backgroundColor: getStatusColor(item.status).bg }]}>
-                <Text style={[styles.statusPillText, { color: getStatusColor(item.status).text }]}>
-                  {getStatusLabel(item.status)}
-                </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={[styles.statusPill, { backgroundColor: getStatusColor(item.status).bg }]}>
+                  <Text style={[styles.statusPillText, { color: getStatusColor(item.status).text }]}>
+                    {getStatusLabel(item.status)}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={{ padding: 4 }}
+                  onPress={() => setActionMenuVisible(actionMenuVisible === item.id ? null : item.id)}
+                >
+                  <Ionicons name="ellipsis-vertical" size={20} color={COLORS.textSecondary} />
+                </TouchableOpacity>
               </View>
+
+              {/* Janelinha branca de Ações */}
+              {actionMenuVisible === item.id && (
+                <View style={[styles.popoverMenu, { right: 0, top: 40 }]}>
+                  <TouchableOpacity 
+                    style={styles.popoverItem}
+                    onPress={() => { setActionMenuVisible(null); setDetailsVisible(true); setSelectedFrete(item); }}
+                  >
+                    <Text style={styles.popoverText}>Ver Detalhes</Text>
+                  </TouchableOpacity>
+                  {(item.status !== 'cancelado_empresa' && item.status !== 'entregue') && (
+                    <TouchableOpacity 
+                      style={[styles.popoverItem, { borderBottomWidth: 0 }]}
+                      onPress={() => { setActionMenuVisible(null); setSelectedFreteId(item.id); setCancelModalVisible(true); }}
+                    >
+                      <Text style={[styles.popoverText, { color: COLORS.error }]}>Excluir</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
             </View>
             <View style={styles.route}>
               <View style={styles.routePoint}>
@@ -687,6 +854,221 @@ function CargasEmpresa({ userId }: { userId: string }) {
         )}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
       />
+
+      {/* Action Menu Empresa foi substituído pela janelinha branca inline */}
+
+      {/* Modal de Detalhes Empresa (Enriquecido como o do Motorista) */}
+      <Modal visible={detailsVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="cube" size={22} color={COLORS.primary} />
+                <Text style={styles.modalTitle}>Detalhes da Carga</Text>
+              </View>
+              <TouchableOpacity onPress={() => setDetailsVisible(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ padding: 20 }}>
+              {/* Informações do Motorista (se houver) */}
+              {selectedFrete?.motoristas ? (
+                <View style={styles.detailSection}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="person" size={18} color={COLORS.primary} />
+                    <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+                  </View>
+                  <View style={styles.sectionBody}>
+                    <Text style={styles.detailText}>
+                      <Text style={styles.detailLabelModal}>Nome: </Text>
+                      {selectedFrete.motoristas.nome_completo}
+                    </Text>
+                    <Text style={styles.detailText}>
+                      <Text style={styles.detailLabelModal}>Celular: </Text>
+                      {selectedFrete.motoristas.celular}
+                    </Text>
+                    <Text style={styles.detailText}>
+                      <Text style={styles.detailLabelModal}>Veículo: </Text>
+                      {selectedFrete.motoristas.tipo_veiculo}
+                    </Text>
+                    <Text style={styles.detailText}>
+                      <Text style={styles.detailLabelModal}>Placa: </Text>
+                      {selectedFrete.motoristas.placa_veiculo || 'Não informada'}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.detailSection}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="person" size={18} color={COLORS.textSecondary} />
+                    <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+                  </View>
+                  <View style={styles.sectionBody}>
+                    <Text style={styles.detailText}>Nenhum motorista aceitou este frete ainda.</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Rota Detalhada */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="map" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Rota e Endereços</Text>
+                </View>
+                <View style={styles.sectionBody}>
+                  <View style={styles.addressBox}>
+                    <Text style={[styles.addressType, { color: COLORS.primary }]}>RETIRADA</Text>
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.endereco_retirada}, {selectedFrete?.numero_retirada}
+                    </Text>
+                    {selectedFrete?.complemento_retirada && (
+                      <Text style={styles.addressText}>{selectedFrete.complemento_retirada}</Text>
+                    )}
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.origem_cidade} - {selectedFrete?.origem_estado}
+                    </Text>
+                    <Text style={styles.addressText}>CEP: {selectedFrete?.cep_retirada}</Text>
+                  </View>
+
+                  <View style={[styles.addressBox, { marginTop: 12 }]}>
+                    <Text style={[styles.addressType, { color: COLORS.accent }]}>ENTREGA</Text>
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.endereco_entrega}, {selectedFrete?.numero_entrega}
+                    </Text>
+                    {selectedFrete?.complemento_entrega && (
+                      <Text style={styles.addressText}>{selectedFrete.complemento_entrega}</Text>
+                    )}
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.destino_cidade} - {selectedFrete?.destino_estado}
+                    </Text>
+                    <Text style={styles.addressText}>CEP: {selectedFrete?.cep_entrega}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Dados da Carga */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="list" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Especificações</Text>
+                </View>
+                <View style={[styles.sectionBody, { flexDirection: 'row', flexWrap: 'wrap' }]}>
+                  <View style={{ width: '50%', marginBottom: 10 }}>
+                    <Text style={styles.detailLabelModal}>Volume</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.volume || 'N/I'}</Text>
+                  </View>
+                  <View style={{ width: '50%', marginBottom: 10 }}>
+                    <Text style={styles.detailLabelModal}>Peso</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.peso} kg</Text>
+                  </View>
+                  <View style={{ width: '50%' }}>
+                    <Text style={styles.detailLabelModal}>Dimensões</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.dimensao || 'N/I'}</Text>
+                  </View>
+                  <View style={{ width: '50%' }}>
+                    <Text style={styles.detailLabelModal}>Veículo</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.tipo_veiculo}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Datas */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="calendar" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Cronograma</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={styles.detailLabelModal}>Coleta</Text>
+                    <Text style={styles.detailText}>
+                      {selectedFrete ? new Date(selectedFrete.data_coleta).toLocaleDateString('pt-BR') : ''}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.detailLabelModal}>Prazo de Entrega</Text>
+                    <Text style={styles.detailText}>
+                      {selectedFrete ? new Date(selectedFrete.prazo_entrega).toLocaleDateString('pt-BR') : ''}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Linha do Tempo (Timeline) */}
+              {(selectedFrete?.data_aceite || selectedFrete?.data_inicio_transporte || selectedFrete?.data_entrega || selectedFrete?.data_cancelamento || selectedFrete?.data_devolucao) && (
+                <View style={styles.detailSection}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="time" size={18} color={COLORS.primary} />
+                    <Text style={styles.sectionTitleModal}>Linha do Tempo</Text>
+                  </View>
+                  <View style={styles.sectionBody}>
+                    {selectedFrete?.data_aceite && (
+                      <View style={styles.timelineItem}>
+                        <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Aceito em: </Text>
+                          {new Date(selectedFrete.data_aceite).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_inicio_transporte && (
+                      <View style={[styles.timelineItem, { marginTop: 8 }]}>
+                        <Ionicons name="play-circle" size={16} color={COLORS.info} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Transporte iniciado: </Text>
+                          {new Date(selectedFrete.data_inicio_transporte).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_entrega && (
+                      <View style={[styles.timelineItem, { marginTop: 8 }]}>
+                        <Ionicons name="flag" size={16} color={COLORS.primary} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Entregue em: </Text>
+                          {new Date(selectedFrete.data_entrega).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_cancelamento && (
+                      <View style={[styles.timelineItem, { marginTop: 8 }]}>
+                        <Ionicons name="close-circle" size={16} color={COLORS.error} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Cancelado em: </Text>
+                          {new Date(selectedFrete.data_cancelamento).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_devolucao && (
+                      <View style={[styles.timelineItem, { marginTop: 8 }]}>
+                        <Ionicons name="arrow-undo" size={16} color={COLORS.error} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Devolvido em: </Text>
+                          {new Date(selectedFrete.data_devolucao).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              <View style={[styles.valorCardModal, { marginBottom: 30 }]}>
+                <Text style={styles.valorLabelModal}>Valor Combinado</Text>
+                <Text style={styles.valorTextModal}>
+                  R$ {selectedFrete ? Number(selectedFrete.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}
+                </Text>
+              </View>
+              
+              <Button 
+                title="Fechar" 
+                variant="outline" 
+                onPress={() => setDetailsVisible(false)}
+                style={{ marginBottom: 40 }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal de Busca Global (Igual ao Web) */}
       <Modal visible={showSearchModal} animationType="slide" transparent>
@@ -744,6 +1126,16 @@ function CargasEmpresa({ userId }: { userId: string }) {
           </View>
         </View>
       </Modal>
+
+      <CancelModal
+        visible={cancelModalVisible}
+        onClose={() => setCancelModalVisible(false)}
+        onConfirm={handleCancelar}
+        title="Cancelar Frete"
+        subtitle="Esta ação registrará o cancelamento e o motivo no histórico do sistema."
+        reasons={MOTIVOS_CANCELAMENTO}
+        loading={cancelling}
+      />
     </View>
   );
 }
@@ -902,4 +1294,42 @@ const styles = StyleSheet.create({
   minhasHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 12 },
   minhasTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
   timelineItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+
+  // Novas ações de cancelamento/devolução
+  cancelBtn: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: '#FEF2F2',
+    justifyContent: 'center', alignItems: 'center'
+  },
+  devolverBtn: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: '#FEF2F2',
+    justifyContent: 'center', alignItems: 'center'
+  },
+  actionBtnCircle: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primaryFaded,
+    justifyContent: 'center', alignItems: 'center'
+  },
+  popoverMenu: {
+    position: 'absolute',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 4,
+    minWidth: 120,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 1000,
+  },
+  popoverItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  popoverText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
 });

@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
 
-const LOGO_IMG = require('../../src/logo/e9f4d56a-2727-4552-b574-c45d396fd7d1_Nero_AI_Image_Upscaler_Photo_Face-removebg-preview.png');
+const LOGO_IMG = require('../../src/logo/WhatsApp_Image_2026-05-13_at_16.08.56_Nero_AI_Image_Upscaler_Photo_Face-removebg-preview.png');
 
 const { width } = Dimensions.get('window');
 
@@ -72,7 +72,7 @@ export default function LandingScreen() {
               </View>
               <Text style={styles.headerWelcome}>Bem-vindo 👋</Text>
             </View>
-            <TouchableOpacity style={styles.crownBtn} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.crownBtn} activeOpacity={0.7} onPress={() => router.push('/planos')}>
               <LinearGradient colors={['#FFD700', '#FFA500']} style={styles.crownCircle}>
                 <Ionicons name="ribbon" size={20} color="#fff" />
               </LinearGradient>
@@ -81,10 +81,15 @@ export default function LandingScreen() {
 
           <Animated.View style={[styles.heroContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
             <View style={styles.creativeLogoContainer}>
-              <View style={styles.logoWhiteBox} />
-              <View style={styles.logoImageWrapper}>
-                <Image source={LOGO_IMG} style={styles.mainLogo} resizeMode="contain" />
-              </View>
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.8)']}
+                style={styles.glassContainer}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.glassInnerGlow}>
+                  <Image source={LOGO_IMG} style={styles.mainLogo} resizeMode="contain" />
+                </View>
+              </LinearGradient>
             </View>
             
             <Text style={styles.heroTagline}>Conectando Cargas e Destinos</Text>
@@ -220,21 +225,32 @@ const styles = StyleSheet.create({
     lineHeight: 24, paddingHorizontal: 20, fontWeight: '500',
   },
 
-  // Creative Logo (Diamond background, logo perfectly centered inside)
-  creativeLogoContainer: { width: '100%', height: 300, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  logoWhiteBox: {
-    width: 240, height: 240, backgroundColor: '#fff', 
-    borderRadius: 50, transform: [{ rotate: '45deg' }],
-    ...SHADOWS.lg,
+  // Creative Logo (Premium Glassmorphism Card)
+  creativeLogoContainer: { 
+    width: '100%', alignItems: 'center', justifyContent: 'center', 
+    marginBottom: 35, marginTop: 15 
   },
-  logoImageWrapper: {
-    position: 'absolute', 
-    top: 0, left: 0, right: 0, bottom: 0,
+  glassContainer: {
+    width: 220, height: 220,
+    borderRadius: 50,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.6)',
     justifyContent: 'center', alignItems: 'center',
+    ...SHADOWS.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 15,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  glassInnerGlow: {
+    width: '100%', height: '100%',
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)', // Brilho interno extra
+    borderRadius: 50,
   },
   mainLogo: { 
-    width: 180, height: 180, 
-    marginLeft: 35, // Compensação absoluta para a assimetria do arquivo .png
+    width: 170, height: 170, 
   },
 
   // Landing Header

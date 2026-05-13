@@ -3,7 +3,9 @@
  * Integração de PagerView para animação de deslizamento entre abas.
  */
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import * as NavigationBar from 'expo-navigation-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs, useRouter, usePathname } from 'expo-router';
 import { PagerView } from '@/components/PagerViewWrapper';
@@ -38,6 +40,13 @@ export default function AppLayout() {
 
   const pagerRef = useRef<PagerView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden');
+      NavigationBar.setBehaviorAsync('inset-touch');
+    }
+  }, []);
 
   // Carregar contagem de notificações
   useEffect(() => {
@@ -82,7 +91,8 @@ export default function AppLayout() {
   const cargasTitle = role === 'empresa' ? 'Fretes' : 'Cargas';
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
+      <StatusBar style="dark" translucent />
       {/* O PagerView fornece a animação de swipe suave estilo Instagram */}
       <PagerView
         ref={pagerRef}

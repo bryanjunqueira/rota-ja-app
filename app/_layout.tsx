@@ -27,12 +27,13 @@ function RootNavigationGuard() {
     if (loading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const isPublicAuthRoute = segments[1] === 'planos' || segments[1] === 'checkout';
 
     if (!user && !inAuthGroup) {
       // Não logado → redireciona para landing
       router.replace('/(auth)/landing');
-    } else if (user && inAuthGroup) {
-      // Logado mas está na tela de auth → redireciona baseado no role
+    } else if (user && inAuthGroup && !isPublicAuthRoute) {
+      // Logado mas está na tela de auth (login, etc) → redireciona baseado no role
       if (role === 'motorista' || role === 'empresa') {
         router.replace('/(app)/dashboard');
       } else if (role === null && !loading) {
@@ -41,6 +42,14 @@ function RootNavigationGuard() {
       }
     }
   }, [user, loading, role, segments]);
+
+  // Reforça ocultação da barra do Android ao mudar de rota
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden');
+      NavigationBar.setBehaviorAsync('overlay-swipe');
+    }
+  }, [segments]);
 
   useEffect(() => {
     if (!loading) {

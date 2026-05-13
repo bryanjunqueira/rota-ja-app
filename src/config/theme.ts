@@ -174,6 +174,7 @@ export function getStatusColor(status: string): { text: string; bg: string; bord
     case 'finalizado':
       return { text: COLORS.statusEntregue, bg: COLORS.statusEntregueBg, border: COLORS.statusEntregue };
     case 'cancelado':
+    case 'cancelado_empresa':
       return { text: COLORS.statusRejeitado, bg: COLORS.statusRejeitadoBg, border: COLORS.statusRejeitado };
     default:
       return { text: COLORS.textSecondary, bg: COLORS.surfaceVariant, border: COLORS.border };
@@ -194,7 +195,8 @@ export function getStatusLabel(status: string): string {
     case 'em_transporte': return 'Em Transporte';
     case 'entregue':
     case 'finalizado': return 'Finalizado';
-    case 'cancelado': return 'Cancelado';
+    case 'cancelado':
+    case 'cancelado_empresa': return 'Cancelado';
     default: return status;
   }
 }
