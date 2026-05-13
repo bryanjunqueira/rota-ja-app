@@ -4,7 +4,7 @@
  * Empresa: Buscar Fretes + Novo Frete + lista de fretes próprios
  */
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, ScrollView, Modal, TextInput } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -42,14 +42,23 @@ function CargasMotorista() {
   const [filtroOrigem, setFiltroOrigem] = useState('');
   const [filtroDestino, setFiltroDestino] = useState('');
   const [distanciaMaxima, setDistanciaMaxima] = useState(1000);
+  const [selectedFrete, setSelectedFrete] = useState<any>(null);
+  const [detailsVisible, setDetailsVisible] = useState(false);
+  const [viewMode, setViewMode] = useState<'disponiveis' | 'minhas'>('disponiveis');
+  const [minhasCargas, setMinhasCargas] = useState<any[]>([]);
 
   const loadCargas = useCallback(async () => {
     if (!motorista) return;
-    // Busca todas disponíveis (filtro é local, como no web)
-    const result = await FretesService.buscarTodosFretes();
-    setAllCargas(result.data);
+    setLoading(true);
+    if (viewMode === 'disponiveis') {
+      const result = await FretesService.buscarTodosFretes();
+      setAllCargas(result.data);
+    } else {
+      const result = await FretesService.buscarHistoricoMotorista(motorista.id);
+      setMinhasCargas(result.data);
+    }
     setLoading(false);
-  }, [motorista]);
+  }, [motorista, viewMode]);
 
   useEffect(() => { loadCargas(); }, [loadCargas]);
   const onRefresh = async () => { setRefreshing(true); await loadCargas(); setRefreshing(false); };
@@ -60,8 +69,33 @@ function CargasMotorista() {
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Coletar', onPress: async () => {
         const result = await FretesService.aceitarCarga(freteId, motorista.id);
-        if (result.success) { Alert.alert('Frete coletado!', 'O frete foi aceito e está agora em suas cargas.'); loadCargas(); }
+        if (result.success) { 
+          Alert.alert('Frete coletado!', 'O frete foi aceito e está agora em suas cargas.'); 
+          setDetailsVisible(false);
+          loadCargas(); 
+        }
         else Alert.alert('Erro', result.error || 'Não foi possível aceitar.');
+      }},
+    ]);
+  };
+
+  const handleOpenDetails = (frete: any) => {
+    setSelectedFrete(frete);
+    setDetailsVisible(true);
+  };
+
+  const handleUpdateStatus = async (freteId: string, status: 'em_transporte' | 'entregue') => {
+    const action = status === 'em_transporte' ? 'iniciar o transporte' : 'finalizar a entrega';
+    Alert.alert('Confirmar', `Deseja ${action} desta carga?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Confirmar', onPress: async () => {
+        const result = await FretesService.atualizarStatusCarga(freteId, status);
+        if (result.success) {
+          Alert.alert('Sucesso!', `O status da carga foi atualizado para ${status === 'em_transporte' ? 'em transporte' : 'entregue'}.`);
+          loadCargas();
+        } else {
+          Alert.alert('Erro', result.error || 'Erro ao atualizar.');
+        }
       }},
     ]);
   };
@@ -110,82 +144,105 @@ function CargasMotorista() {
 
   return (
     <View style={styles.container}>
+      {/* Toggle View Mode */}
+      <View style={styles.viewToggle}>
+        <TouchableOpacity
+          style={[styles.toggleBtn, viewMode === 'disponiveis' && styles.toggleBtnActive]}
+          onPress={() => setViewMode('disponiveis')}
+        >
+          <Text style={[styles.toggleText, viewMode === 'disponiveis' && styles.toggleTextActive]}>Disponíveis</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.toggleBtn, viewMode === 'minhas' && styles.toggleBtnActive]}
+          onPress={() => setViewMode('minhas')}
+        >
+          <Text style={[styles.toggleText, viewMode === 'minhas' && styles.toggleTextActive]}>Minhas Cargas</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
-        data={cargasFiltradas}
+        data={viewMode === 'disponiveis' ? cargasFiltradas : minhasCargas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
         ListHeaderComponent={
-          <View style={styles.filterCard}>
-            {/* Titulo */}
-            <View style={styles.filterTitleRow}>
-              <Ionicons name="cube-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.filterTitle}>Cargas compatíveis com {motorista?.tipo_veiculo}</Text>
-            </View>
+          viewMode === 'disponiveis' ? (
+            <View style={styles.filterCard}>
+              {/* Titulo */}
+              <View style={styles.filterTitleRow}>
+                <Ionicons name="cube-outline" size={20} color={COLORS.primary} />
+                <Text style={styles.filterTitle}>Cargas compatíveis com {motorista?.tipo_veiculo}</Text>
+              </View>
 
-            {/* Filtro: Origem */}
-            <View style={styles.filterField}>
-              <Text style={styles.filterLabel}>Filtrar por Origem</Text>
-              <CidadeEstadoSelect
-                value={filtroOrigem}
-                onChange={setFiltroOrigem}
-                placeholder="Selecione cidade de origem"
-              />
-            </View>
-
-            {/* Filtro: Destino */}
-            <View style={styles.filterField}>
-              <Text style={styles.filterLabel}>Filtrar por Destino</Text>
-              <CidadeEstadoSelect
-                value={filtroDestino}
-                onChange={setFiltroDestino}
-                placeholder="Selecione cidade de destino"
-              />
-            </View>
-
-            {/* Filtro: Distância Máxima */}
-            <View style={styles.filterField}>
-              <Text style={styles.filterLabel}>Distância Máxima</Text>
-              <View style={styles.sliderRow}>
-                <Slider
-                  style={{ flex: 1, height: 40 }}
-                  minimumValue={50}
-                  maximumValue={5000}
-                  step={50}
-                  value={distanciaMaxima}
-                  onValueChange={setDistanciaMaxima}
-                  minimumTrackTintColor={COLORS.primary}
-                  maximumTrackTintColor={COLORS.border}
-                  thumbTintColor={COLORS.primary}
+              {/* Filtro: Origem */}
+              <View style={styles.filterField}>
+                <Text style={styles.filterLabel}>Filtrar por Origem</Text>
+                <CidadeEstadoSelect
+                  value={filtroOrigem}
+                  onChange={setFiltroOrigem}
+                  placeholder="Selecione cidade de origem"
                 />
-                <Text style={styles.sliderValue}>{distanciaMaxima} km</Text>
+              </View>
+
+              {/* Filtro: Destino */}
+              <View style={styles.filterField}>
+                <Text style={styles.filterLabel}>Filtrar por Destino</Text>
+                <CidadeEstadoSelect
+                  value={filtroDestino}
+                  onChange={setFiltroDestino}
+                  placeholder="Selecione cidade de destino"
+                />
+              </View>
+
+              {/* Filtro: Distância Máxima */}
+              <View style={styles.filterField}>
+                <Text style={styles.filterLabel}>Distância Máxima</Text>
+                <View style={styles.sliderRow}>
+                  <Slider
+                    style={{ flex: 1, height: 40 }}
+                    minimumValue={50}
+                    maximumValue={5000}
+                    step={50}
+                    value={distanciaMaxima}
+                    onValueChange={setDistanciaMaxima}
+                    minimumTrackTintColor={COLORS.primary}
+                    maximumTrackTintColor={COLORS.border}
+                    thumbTintColor={COLORS.primary}
+                  />
+                  <Text style={styles.sliderValue}>{distanciaMaxima} km</Text>
+                </View>
+              </View>
+
+              {/* Botão Limpar Filtros */}
+              {(filtroOrigem || filtroDestino || distanciaMaxima !== 1000) && (
+                <TouchableOpacity
+                  style={styles.clearBtn}
+                  onPress={() => {
+                    setFiltroOrigem('');
+                    setFiltroDestino('');
+                    setDistanciaMaxima(1000);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="close-circle-outline" size={18} color={COLORS.error} />
+                  <Text style={styles.clearBtnText}>Limpar Filtros</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Resultado */}
+              <View style={styles.resultRow}>
+                <Ionicons name="cube" size={16} color={COLORS.primary} />
+                <Text style={styles.resultCount}>
+                  {cargasFiltradas.length} carga{cargasFiltradas.length !== 1 ? 's' : ''} encontrada{cargasFiltradas.length !== 1 ? 's' : ''}
+                </Text>
               </View>
             </View>
-
-            {/* Botão Limpar Filtros */}
-            {(filtroOrigem || filtroDestino || distanciaMaxima !== 1000) && (
-              <TouchableOpacity
-                style={styles.clearBtn}
-                onPress={() => {
-                  setFiltroOrigem('');
-                  setFiltroDestino('');
-                  setDistanciaMaxima(1000);
-                }}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="close-circle-outline" size={18} color={COLORS.error} />
-                <Text style={styles.clearBtnText}>Limpar Filtros</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Resultado */}
-            <View style={styles.resultRow}>
-              <Ionicons name="cube" size={16} color={COLORS.primary} />
-              <Text style={styles.resultCount}>
-                {cargasFiltradas.length} carga{cargasFiltradas.length !== 1 ? 's' : ''} encontrada{cargasFiltradas.length !== 1 ? 's' : ''}
-              </Text>
+          ) : (
+            <View style={styles.minhasHeader}>
+              <Ionicons name="briefcase" size={20} color={COLORS.primary} />
+              <Text style={styles.minhasTitle}>Minhas Cargas Aceitas</Text>
             </View>
-          </View>
+          )
         }
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -203,9 +260,18 @@ function CargasMotorista() {
           <View style={styles.card}>
             {/* Empresa + Badge veículo */}
             <View style={styles.cardTopRow}>
-              <Text style={styles.empresaName} numberOfLines={1}>
-                {item.empresas?.nome_empresa || 'Empresa'}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.empresaName} numberOfLines={1}>
+                  {item.empresas?.nome_empresa || 'Empresa'}
+                </Text>
+                {viewMode === 'minhas' && (
+                   <View style={[styles.statusPill, { backgroundColor: getStatusColor(item.status).bg, marginTop: 4, alignSelf: 'flex-start' }]}>
+                    <Text style={[styles.statusPillText, { color: getStatusColor(item.status).text }]}>
+                      {getStatusLabel(item.status)}
+                    </Text>
+                  </View>
+                )}
+              </View>
               <View style={styles.vehicleBadge}>
                 <Text style={styles.vehicleBadgeText}>{item.tipo_veiculo}</Text>
               </View>
@@ -251,18 +317,243 @@ function CargasMotorista() {
             {/* Botões */}
             <View style={styles.cardActions}>
               <TouchableOpacity
-                style={styles.coletarBtn}
-                onPress={() => handleAceitar(item.id)}
+                style={styles.detailsBtn}
+                onPress={() => handleOpenDetails(item)}
                 activeOpacity={0.8}
               >
-                <Ionicons name="checkmark-circle" size={16} color={COLORS.white} />
-                <Text style={styles.coletarText}>Coletar</Text>
+                <Ionicons name="eye-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.detailsBtnText}>Detalhes</Text>
               </TouchableOpacity>
+
+              {viewMode === 'disponiveis' ? (
+                <TouchableOpacity
+                  style={styles.coletarBtn}
+                  onPress={() => handleAceitar(item.id)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="checkmark-circle" size={16} color={COLORS.white} />
+                  <Text style={styles.coletarText}>Coletar</Text>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  {item.status === 'aceito' && (
+                    <TouchableOpacity
+                      style={[styles.coletarBtn, { backgroundColor: COLORS.info }]}
+                      onPress={() => handleUpdateStatus(item.id, 'em_transporte')}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="play" size={16} color={COLORS.white} />
+                      <Text style={styles.coletarText}>Iniciar</Text>
+                    </TouchableOpacity>
+                  )}
+                  {item.status === 'em_transporte' && (
+                    <TouchableOpacity
+                      style={[styles.coletarBtn, { backgroundColor: COLORS.success }]}
+                      onPress={() => handleUpdateStatus(item.id, 'entregue')}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="checkmark-done" size={16} color={COLORS.white} />
+                      <Text style={styles.coletarText}>Entregar</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
             </View>
           </View>
         )}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
       />
+
+      {/* Modal de Detalhes da Carga */}
+      <Modal visible={detailsVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="cube" size={22} color={COLORS.primary} />
+                <Text style={styles.modalTitle}>Detalhes da Carga</Text>
+              </View>
+              <TouchableOpacity onPress={() => setDetailsVisible(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ padding: 20 }}>
+              {/* Informações da Empresa */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="business" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Empresa</Text>
+                </View>
+                <View style={styles.sectionBody}>
+                  <Text style={styles.detailText}>
+                    <Text style={styles.detailLabelModal}>Nome: </Text>
+                    {selectedFrete?.empresas?.nome_empresa}
+                  </Text>
+                  <Text style={styles.detailText}>
+                    <Text style={styles.detailLabelModal}>Responsável: </Text>
+                    {selectedFrete?.empresas?.nome_responsavel || 'Não informado'}
+                  </Text>
+                  <Text style={styles.detailText}>
+                    <Text style={styles.detailLabelModal}>Telefone: </Text>
+                    {selectedFrete?.empresas?.telefone}
+                  </Text>
+                  <Text style={styles.detailText}>
+                    <Text style={styles.detailLabelModal}>Email: </Text>
+                    {selectedFrete?.empresas?.email || 'Não informado'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Rota Detalhada */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="map" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Rota e Endereços</Text>
+                </View>
+                <View style={styles.sectionBody}>
+                  <View style={styles.addressBox}>
+                    <Text style={[styles.addressType, { color: COLORS.primary }]}>RETIRADA</Text>
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.endereco_retirada}, {selectedFrete?.numero_retirada}
+                    </Text>
+                    {selectedFrete?.complemento_retirada && (
+                      <Text style={styles.addressText}>{selectedFrete.complemento_retirada}</Text>
+                    )}
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.origem_cidade} - {selectedFrete?.origem_estado}
+                    </Text>
+                    <Text style={styles.addressText}>CEP: {selectedFrete?.cep_retirada}</Text>
+                  </View>
+
+                  <View style={[styles.addressBox, { marginTop: 12 }]}>
+                    <Text style={[styles.addressType, { color: COLORS.accent }]}>ENTREGA</Text>
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.endereco_entrega}, {selectedFrete?.numero_entrega}
+                    </Text>
+                    {selectedFrete?.complemento_entrega && (
+                      <Text style={styles.addressText}>{selectedFrete.complemento_entrega}</Text>
+                    )}
+                    <Text style={styles.addressText}>
+                      {selectedFrete?.destino_cidade} - {selectedFrete?.destino_estado}
+                    </Text>
+                    <Text style={styles.addressText}>CEP: {selectedFrete?.cep_entrega}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Dados da Carga */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="list" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Especificações</Text>
+                </View>
+                <View style={[styles.sectionBody, { flexDirection: 'row', flexWrap: 'wrap' }]}>
+                  <View style={{ width: '50%', marginBottom: 10 }}>
+                    <Text style={styles.detailLabelModal}>Volume</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.volume || 'N/I'}</Text>
+                  </View>
+                  <View style={{ width: '50%', marginBottom: 10 }}>
+                    <Text style={styles.detailLabelModal}>Peso</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.peso} kg</Text>
+                  </View>
+                  <View style={{ width: '50%' }}>
+                    <Text style={styles.detailLabelModal}>Dimensões</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.dimensao || 'N/I'}</Text>
+                  </View>
+                  <View style={{ width: '50%' }}>
+                    <Text style={styles.detailLabelModal}>Veículo</Text>
+                    <Text style={styles.detailText}>{selectedFrete?.tipo_veiculo}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Datas */}
+              <View style={styles.detailSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="calendar" size={18} color={COLORS.primary} />
+                  <Text style={styles.sectionTitleModal}>Cronograma</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={styles.detailLabelModal}>Coleta</Text>
+                    <Text style={styles.detailText}>
+                      {selectedFrete ? new Date(selectedFrete.data_coleta).toLocaleDateString('pt-BR') : ''}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.detailLabelModal}>Prazo de Entrega</Text>
+                    <Text style={styles.detailText}>
+                      {selectedFrete ? new Date(selectedFrete.prazo_entrega).toLocaleDateString('pt-BR') : ''}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Linha do Tempo (Timeline) */}
+              {(selectedFrete?.data_aceite || selectedFrete?.data_inicio_transporte || selectedFrete?.data_entrega) && (
+                <View style={styles.detailSection}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="time" size={18} color={COLORS.primary} />
+                    <Text style={styles.sectionTitleModal}>Linha do Tempo</Text>
+                  </View>
+                  <View style={styles.sectionBody}>
+                    {selectedFrete?.data_aceite && (
+                      <View style={styles.timelineItem}>
+                        <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Aceito em: </Text>
+                          {new Date(selectedFrete.data_aceite).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_inicio_transporte && (
+                      <View style={[styles.timelineItem, { marginTop: 8 }]}>
+                        <Ionicons name="play-circle" size={16} color={COLORS.info} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Transporte iniciado: </Text>
+                          {new Date(selectedFrete.data_inicio_transporte).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedFrete?.data_entrega && (
+                      <View style={[styles.timelineItem, { marginTop: 8 }]}>
+                        <Ionicons name="flag" size={16} color={COLORS.success} />
+                        <Text style={styles.detailText}>
+                          <Text style={styles.detailLabelModal}>Finalizado em: </Text>
+                          {new Date(selectedFrete.data_entrega).toLocaleString('pt-BR')}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {/* Valor */}
+              <View style={styles.valorCardModal}>
+                <Text style={styles.valorLabelModal}>Valor total do frete</Text>
+                <Text style={styles.valorTextModal}>
+                  R$ {selectedFrete ? Number(selectedFrete.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}
+                </Text>
+              </View>
+
+              {selectedFrete?.status === 'disponivel' && (
+                <Button 
+                  title="Coletar este Frete" 
+                  onPress={() => handleAceitar(selectedFrete?.id)}
+                  style={{ marginTop: 10 }}
+                />
+              )}
+              <Button 
+                title="Fechar" 
+                variant="outline" 
+                onPress={() => setDetailsVisible(false)}
+                style={{ marginTop: 10, marginBottom: 40 }}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -271,7 +562,6 @@ function CargasMotorista() {
 
 // ── CARGAS EMPRESA ──
 
-import { Modal, TextInput } from 'react-native';
 
 function CargasEmpresa({ userId }: { userId: string }) {
   const router = useRouter();
@@ -555,6 +845,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#16a34a', borderRadius: BORDER_RADIUS.sm, paddingVertical: 12,
   },
   coletarText: { color: COLORS.white, fontWeight: '700', fontSize: FONT_SIZES.md },
+  detailsBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.sm, paddingVertical: 12,
+    borderWidth: 1, borderColor: COLORS.primary,
+  },
+  detailsBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: FONT_SIZES.md },
 
   // Empresa publish
   publishBtn: {
@@ -578,4 +874,32 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
   searchBarWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, margin: 16, paddingHorizontal: 12, borderRadius: 12, height: 48, ...SHADOWS.sm },
   searchInput: { flex: 1, marginLeft: 8, fontSize: 16, color: COLORS.textPrimary },
+
+  // Detail Modal Specific
+  detailSection: { marginBottom: 20 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  sectionTitleModal: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  sectionBody: { backgroundColor: COLORS.surface, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: COLORS.borderLight },
+  detailText: { fontSize: 14, color: COLORS.textPrimary, marginBottom: 4 },
+  detailLabelModal: { fontWeight: '600', color: COLORS.textSecondary },
+  addressBox: { backgroundColor: COLORS.background, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: COLORS.borderLight },
+  addressType: { fontSize: 11, fontWeight: '800', marginBottom: 4 },
+  addressText: { fontSize: 13, color: COLORS.textPrimary, lineHeight: 18 },
+  valorCardModal: { backgroundColor: COLORS.successLight, padding: 20, borderRadius: 12, alignItems: 'center', marginBottom: 20 },
+  valorLabelModal: { fontSize: 13, color: COLORS.success, fontWeight: '600' },
+  valorTextModal: { fontSize: 26, fontWeight: '800', color: COLORS.success, marginTop: 4 },
+
+  // Toggle
+  viewToggle: {
+    flexDirection: 'row', backgroundColor: COLORS.surfaceVariant,
+    margin: SPACING.md, borderRadius: 12, padding: 4,
+  },
+  toggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+  toggleBtnActive: { backgroundColor: COLORS.white, ...SHADOWS.sm },
+  toggleText: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
+  toggleTextActive: { color: COLORS.primary },
+
+  minhasHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 12 },
+  minhasTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  timelineItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

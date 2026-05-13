@@ -97,18 +97,40 @@ export const FretesService = {
   },
 
   /**
-   * Busca cargas ativas do motorista (aceitas ou em transporte)
+   * Busca todas as cargas vinculadas ao motorista (histórico completo)
    */
-  async buscarCargasAtivas(motoristaId: string) {
+  async buscarHistoricoMotorista(motoristaId: string) {
     try {
       const { data, error } = await supabase
         .from('fretes')
-        .select('id, origem_cidade, origem_estado, destino_cidade, destino_estado, valor_frete, data_coleta, prazo_entrega, status, peso, tipo_veiculo')
+        .select(`
+          *,
+          empresas ( nome_empresa, telefone, email, nome_responsavel )
+        `)
         .eq('motorista_id', motoristaId)
-        .in('status', ['aceito', 'em_transporte']);
-      if (error) return { data: [], error: 'Não foi possível carregar as cargas ativas.' };
+        .order('created_at', { ascending: false });
+      if (error) return { data: [], error: 'Não foi possível carregar seu histórico.' };
       return { data: data || [] };
     } catch { return { data: [], error: 'Erro inesperado.' }; }
+  },
+
+  /**
+   * Atualiza o status de uma carga (ex: iniciar transporte, finalizar entrega)
+   */
+  async atualizarStatusCarga(freteId: string, status: 'em_transporte' | 'entregue') {
+    try {
+      const updateData: any = { status };
+      if (status === 'em_transporte') updateData.data_inicio_transporte = new Date().toISOString();
+      if (status === 'entregue') updateData.data_entrega = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('fretes')
+        .update(updateData)
+        .eq('id', freteId);
+      
+      if (error) return { success: false, error: 'Erro ao atualizar status.' };
+      return { success: true };
+    } catch { return { success: false, error: 'Erro inesperado.' }; }
   },
 
   /**
@@ -140,8 +162,11 @@ export const FretesService = {
         .select(`
           id, origem_cidade, origem_estado, destino_cidade, destino_estado,
           valor_frete, peso, tipo_veiculo, data_coleta, prazo_entrega,
-          status, volume, pedagogio_incluso,
-          empresas ( nome_empresa, telefone )
+          status, volume, dimensao, pedagogio_incluso,
+          endereco_retirada, numero_retirada, complemento_retirada, cep_retirada,
+          endereco_entrega, numero_entrega, complemento_entrega, cep_entrega,
+          data_aceite, data_inicio_transporte, data_entrega,
+          empresas ( nome_empresa, telefone, email, nome_responsavel )
         `)
         .eq('status', 'disponivel')
         .is('motorista_id', null)
@@ -169,8 +194,11 @@ export const FretesService = {
         .select(`
           id, origem_cidade, origem_estado, destino_cidade, destino_estado,
           valor_frete, peso, tipo_veiculo, data_coleta, prazo_entrega,
-          status, volume, pedagogio_incluso,
-          empresas ( nome_empresa, telefone )
+          status, volume, dimensao, pedagogio_incluso,
+          endereco_retirada, numero_retirada, complemento_retirada, cep_retirada,
+          endereco_entrega, numero_entrega, complemento_entrega, cep_entrega,
+          data_aceite, data_inicio_transporte, data_entrega,
+          empresas ( nome_empresa, telefone, email, nome_responsavel )
         `)
         .eq('status', 'disponivel')
         .is('motorista_id', null);

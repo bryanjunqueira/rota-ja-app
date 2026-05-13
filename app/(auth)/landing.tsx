@@ -5,12 +5,14 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Animated,
+  Dimensions, Animated, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
+import { COLORS, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
+
+const LOGO_IMG = require('../../src/logo/e9f4d56a-2727-4552-b574-c45d396fd7d1_Nero_AI_Image_Upscaler_Photo_Face-removebg-preview.png');
 
 const { width } = Dimensions.get('window');
 
@@ -58,19 +60,37 @@ export default function LandingScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {/* ─── Hero Section ─── */}
         <LinearGradient
-          colors={['#1976D2', '#2094F3', '#4DA9F5']}
+          colors={['#1565C0', '#1976D2', '#4DA9F5']}
           start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
           style={styles.hero}
         >
-          <Animated.View style={[styles.heroContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-            <View style={styles.logoBadge}>
-              <Text style={styles.logoText}>RJ</Text>
+          {/* Header Superior com Perfil e Planos */}
+          <View style={styles.landingHeader}>
+            <View style={styles.headerProfile}>
+              <View style={styles.profileCircle}>
+                <Ionicons name="person" size={18} color={COLORS.primary} />
+              </View>
+              <Text style={styles.headerWelcome}>Bem-vindo 👋</Text>
             </View>
-            <Text style={styles.heroTitle}>ROTA JÁ</Text>
-            <Text style={styles.heroTagline}>Frete Ágil</Text>
+            <TouchableOpacity style={styles.crownBtn} activeOpacity={0.7}>
+              <LinearGradient colors={['#FFD700', '#FFA500']} style={styles.crownCircle}>
+                <Ionicons name="ribbon" size={20} color="#fff" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+
+          <Animated.View style={[styles.heroContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <View style={styles.creativeLogoContainer}>
+              <View style={styles.logoWhiteBox} />
+              <View style={styles.logoImageWrapper}>
+                <Image source={LOGO_IMG} style={styles.mainLogo} resizeMode="contain" />
+              </View>
+            </View>
+            
+            <Text style={styles.heroTagline}>Conectando Cargas e Destinos</Text>
             <View style={styles.heroDivider} />
             <Text style={styles.heroDesc}>
-              A plataforma que revoluciona o transporte de cargas no Brasil
+              A plataforma definitiva para transportes inteligentes no Brasil
             </Text>
           </Animated.View>
 
@@ -185,27 +205,47 @@ const styles = StyleSheet.create({
     paddingTop: 60, paddingBottom: 50, paddingHorizontal: SPACING.lg,
     borderBottomLeftRadius: 32, borderBottomRightRadius: 32,
   },
-  heroContent: { alignItems: 'center' },
-  logoBadge: {
-    width: 64, height: 64, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: SPACING.md, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)',
-  },
-  logoText: { fontSize: 26, fontWeight: '900', color: '#fff', letterSpacing: 2 },
-  heroTitle: { fontSize: 36, fontWeight: '900', color: '#fff', letterSpacing: 3 },
+  heroContent: { alignItems: 'center', width: '100%' },
   heroTagline: {
-    fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.8)',
-    letterSpacing: 4, textTransform: 'uppercase', marginTop: 2,
+    fontSize: 16, fontWeight: '700', color: '#fff',
+    letterSpacing: 2, textTransform: 'uppercase', marginTop: 15,
+    textAlign: 'center',
   },
   heroDivider: {
-    width: 48, height: 3, backgroundColor: COLORS.accent,
-    borderRadius: 2, marginVertical: 16,
+    width: 60, height: 4, backgroundColor: COLORS.accent,
+    borderRadius: 2, marginVertical: 15, alignSelf: 'center',
   },
   heroDesc: {
-    fontSize: 15, color: 'rgba(255,255,255,0.9)', textAlign: 'center',
-    lineHeight: 22, paddingHorizontal: 10,
+    fontSize: 16, color: 'rgba(255,255,255,0.95)', textAlign: 'center',
+    lineHeight: 24, paddingHorizontal: 20, fontWeight: '500',
   },
+
+  // Creative Logo (Diamond background, logo perfectly centered inside)
+  creativeLogoContainer: { width: '100%', height: 300, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  logoWhiteBox: {
+    width: 240, height: 240, backgroundColor: '#fff', 
+    borderRadius: 50, transform: [{ rotate: '45deg' }],
+    ...SHADOWS.lg,
+  },
+  logoImageWrapper: {
+    position: 'absolute', 
+    top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  mainLogo: { 
+    width: 180, height: 180, 
+    marginLeft: 35, // Compensação absoluta para a assimetria do arquivo .png
+  },
+
+  // Landing Header
+  landingHeader: { 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+    width: '100%', paddingBottom: 20, marginTop: -10 
+  },
+  headerProfile: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  profileCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', ...SHADOWS.sm },
+  headerWelcome: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  crownCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', ...SHADOWS.md },
 
   // Stats
   statsRow: {
