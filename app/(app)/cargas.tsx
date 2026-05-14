@@ -93,6 +93,9 @@ function CargasMotorista() {
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [minhasCargas, setMinhasCargas] = useState<any[]>([]);
 
+  // States para ações
+  const [actionMenuVisible, setActionMenuVisible] = useState<string | null>(null);
+
   const loadCargas = useCallback(async () => {
     if (!motorista) return;
     setLoading(true);
@@ -839,17 +842,21 @@ function CargasEmpresa({ userId }: { userId: string }) {
                 <Text style={styles.detailValue}>{item.tipo_veiculo}</Text>
               </View>
             </View>
-            {item.motoristas && (
-              <View style={styles.motoristaRow}>
-                <View style={styles.motoristaAvatar}>
-                  <Text style={styles.motoristaInit}>{item.motoristas.nome_completo?.charAt(0)?.toUpperCase()}</Text>
+            {/* Motorista */}
+            {(() => {
+              const motoristaCard = item.motoristas ? (Array.isArray(item.motoristas) ? item.motoristas[0] : item.motoristas) : null;
+              return motoristaCard ? (
+                <View style={styles.motoristaRow}>
+                  <View style={styles.motoristaAvatar}>
+                    <Text style={styles.motoristaInit}>{motoristaCard.nome_completo?.charAt(0)?.toUpperCase()}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.motoristaName}>{motoristaCard.nome_completo}</Text>
+                    <Text style={styles.motoristaPhone}>{motoristaCard.celular}</Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.motoristaName}>{item.motoristas.nome_completo}</Text>
-                  <Text style={styles.motoristaPhone}>{item.motoristas.celular}</Text>
-                </View>
-              </View>
-            )}
+              ) : null;
+            })()}
           </View>
         )}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
@@ -873,42 +880,45 @@ function CargasEmpresa({ userId }: { userId: string }) {
 
             <ScrollView style={{ padding: 20 }}>
               {/* Informações do Motorista (se houver) */}
-              {selectedFrete?.motoristas ? (
-                <View style={styles.detailSection}>
-                  <View style={styles.sectionHeader}>
-                    <Ionicons name="person" size={18} color={COLORS.primary} />
-                    <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+              {(() => {
+                const motoristaVinculado = selectedFrete?.motoristas ? (Array.isArray(selectedFrete.motoristas) ? selectedFrete.motoristas[0] : selectedFrete.motoristas) : null;
+                return motoristaVinculado ? (
+                  <View style={styles.detailSection}>
+                    <View style={styles.sectionHeader}>
+                      <Ionicons name="person" size={18} color={COLORS.primary} />
+                      <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+                    </View>
+                    <View style={styles.sectionBody}>
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabelModal}>Nome: </Text>
+                        {motoristaVinculado.nome_completo}
+                      </Text>
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabelModal}>Celular: </Text>
+                        {motoristaVinculado.celular}
+                      </Text>
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabelModal}>Veículo: </Text>
+                        {motoristaVinculado.tipo_veiculo || 'Não informado'}
+                      </Text>
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabelModal}>Placa: </Text>
+                        {motoristaVinculado.placa_veiculo || 'Não informada'}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.sectionBody}>
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabelModal}>Nome: </Text>
-                      {selectedFrete.motoristas.nome_completo}
-                    </Text>
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabelModal}>Celular: </Text>
-                      {selectedFrete.motoristas.celular}
-                    </Text>
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabelModal}>Veículo: </Text>
-                      {selectedFrete.motoristas.tipo_veiculo}
-                    </Text>
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabelModal}>Placa: </Text>
-                      {selectedFrete.motoristas.placa_veiculo || 'Não informada'}
-                    </Text>
+                ) : (
+                  <View style={styles.detailSection}>
+                    <View style={styles.sectionHeader}>
+                      <Ionicons name="person" size={18} color={COLORS.textSecondary} />
+                      <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+                    </View>
+                    <View style={styles.sectionBody}>
+                      <Text style={styles.detailText}>Nenhum motorista aceitou este frete ainda.</Text>
+                    </View>
                   </View>
-                </View>
-              ) : (
-                <View style={styles.detailSection}>
-                  <View style={styles.sectionHeader}>
-                    <Ionicons name="person" size={18} color={COLORS.textSecondary} />
-                    <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
-                  </View>
-                  <View style={styles.sectionBody}>
-                    <Text style={styles.detailText}>Nenhum motorista aceitou este frete ainda.</Text>
-                  </View>
-                </View>
-              )}
+                );
+              })()}
 
               {/* Rota Detalhada */}
               <View style={styles.detailSection}>
@@ -1057,6 +1067,12 @@ function CargasEmpresa({ userId }: { userId: string }) {
                 <Text style={styles.valorTextModal}>
                   R$ {selectedFrete ? Number(selectedFrete.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}
                 </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, backgroundColor: 'rgba(255,255,255,0.5)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                  <Ionicons name={selectedFrete?.pedagogio_incluso ? "checkmark-circle" : "close-circle"} size={14} color={selectedFrete?.pedagogio_incluso ? COLORS.success : COLORS.textSecondary} />
+                  <Text style={{ fontSize: 12, marginLeft: 4, color: selectedFrete?.pedagogio_incluso ? COLORS.success : COLORS.textSecondary, fontWeight: '600' }}>
+                    {selectedFrete?.pedagogio_incluso ? "Pedágio Incluso" : "Pedágio Não Incluso"}
+                  </Text>
+                </View>
               </View>
               
               <Button 

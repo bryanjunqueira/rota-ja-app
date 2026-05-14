@@ -443,17 +443,20 @@ function DashboardEmpresa() {
             </View>
 
             {/* Motorista que aceitou */}
-            {frete.motoristas && (
-              <View style={styles.motoristaInfo}>
-                <View style={styles.motoristaAvatar}>
-                  <Text style={styles.motoristaAvatarText}>{frete.motoristas.nome_completo?.charAt(0)?.toUpperCase()}</Text>
+            {(() => {
+              const motoristaCard = frete.motoristas ? (Array.isArray(frete.motoristas) ? frete.motoristas[0] : frete.motoristas) : null;
+              return motoristaCard ? (
+                <View style={styles.motoristaInfo}>
+                  <View style={styles.motoristaAvatar}>
+                    <Text style={styles.motoristaAvatarText}>{motoristaCard.nome_completo?.charAt(0)?.toUpperCase()}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.motoristaName}>{motoristaCard.nome_completo}</Text>
+                    <Text style={styles.motoristaContact}>{motoristaCard.celular}</Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.motoristaName}>{frete.motoristas.nome_completo}</Text>
-                  <Text style={styles.motoristaContact}>{frete.motoristas.celular}</Text>
-                </View>
-              </View>
-            )}
+              ) : null;
+            })()}
           </View>
         ))
       )}
@@ -493,42 +496,45 @@ function DashboardEmpresa() {
               </View>
 
               {/* Informações do Motorista (se houver) */}
-              {selectedFrete?.motoristas ? (
-                <View style={styles.detailSection}>
-                  <View style={styles.sectionHeader}>
-                    <Ionicons name="person" size={18} color={COLORS.primary} />
-                    <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+              {(() => {
+                const motoristaVinculado = selectedFrete?.motoristas ? (Array.isArray(selectedFrete.motoristas) ? selectedFrete.motoristas[0] : selectedFrete.motoristas) : null;
+                return motoristaVinculado ? (
+                  <View style={styles.detailSection}>
+                    <View style={styles.sectionHeader}>
+                      <Ionicons name="person" size={18} color={COLORS.primary} />
+                      <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+                    </View>
+                    <View style={styles.sectionBody}>
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabelModal}>Nome: </Text>
+                        {motoristaVinculado.nome_completo}
+                      </Text>
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabelModal}>Celular: </Text>
+                        {motoristaVinculado.celular}
+                      </Text>
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabelModal}>Veículo: </Text>
+                        {motoristaVinculado.tipo_veiculo || 'Não informado'}
+                      </Text>
+                      <Text style={styles.detailText}>
+                        <Text style={styles.detailLabelModal}>Placa: </Text>
+                        {motoristaVinculado.placa_veiculo || 'Não informada'}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.sectionBody}>
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabelModal}>Nome: </Text>
-                      {selectedFrete.motoristas.nome_completo}
-                    </Text>
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabelModal}>Celular: </Text>
-                      {selectedFrete.motoristas.celular}
-                    </Text>
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabelModal}>Veículo: </Text>
-                      {selectedFrete.motoristas.tipo_veiculo}
-                    </Text>
-                    <Text style={styles.detailText}>
-                      <Text style={styles.detailLabelModal}>Placa: </Text>
-                      {selectedFrete.motoristas.placa_veiculo || 'Não informada'}
-                    </Text>
+                ) : (
+                  <View style={styles.detailSection}>
+                    <View style={styles.sectionHeader}>
+                      <Ionicons name="person" size={18} color={COLORS.textSecondary} />
+                      <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
+                    </View>
+                    <View style={styles.sectionBody}>
+                      <Text style={styles.detailText}>Nenhum motorista aceitou este frete ainda.</Text>
+                    </View>
                   </View>
-                </View>
-              ) : (
-                <View style={styles.detailSection}>
-                  <View style={styles.sectionHeader}>
-                    <Ionicons name="person" size={18} color={COLORS.textSecondary} />
-                    <Text style={styles.sectionTitleModal}>Motorista Vinculado</Text>
-                  </View>
-                  <View style={styles.sectionBody}>
-                    <Text style={styles.detailText}>Nenhum motorista aceitou este frete ainda.</Text>
-                  </View>
-                </View>
-              )}
+                );
+              })()}
 
               {/* Rota Detalhada */}
               <View style={styles.detailSection}>
@@ -677,6 +683,12 @@ function DashboardEmpresa() {
                 <Text style={styles.valorTextModal}>
                   R$ {selectedFrete ? Number(selectedFrete.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}
                 </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, backgroundColor: 'rgba(255,255,255,0.5)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                  <Ionicons name={selectedFrete?.pedagogio_incluso ? "checkmark-circle" : "close-circle"} size={14} color={selectedFrete?.pedagogio_incluso ? COLORS.success : COLORS.textSecondary} />
+                  <Text style={{ fontSize: 12, marginLeft: 4, color: selectedFrete?.pedagogio_incluso ? COLORS.success : COLORS.textSecondary, fontWeight: '600' }}>
+                    {selectedFrete?.pedagogio_incluso ? "Pedágio Incluso" : "Pedágio Não Incluso"}
+                  </Text>
+                </View>
               </View>
               <View style={{ height: 40 }} />
             </ScrollView>

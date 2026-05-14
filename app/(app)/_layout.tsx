@@ -79,7 +79,7 @@ export default function AppLayout() {
     if (newIdx !== activeIndex) {
       setActiveIndex(newIdx);
       // Atualiza a URL para que o botão da Tab reflita a seleção
-      router.replace(`/(app)/${ROUTES[newIdx]}`);
+      router.navigate(`/(app)/${ROUTES[newIdx]}`);
     }
   };
 

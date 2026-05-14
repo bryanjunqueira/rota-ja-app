@@ -259,7 +259,9 @@ export const FretesService = {
           motoristas (
             nome_completo,
             celular,
-            email
+            email,
+            tipo_veiculo,
+            placa_veiculo
           )
         `)
         .eq('user_id', userId)
