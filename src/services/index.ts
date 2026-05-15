@@ -7,9 +7,11 @@ export { EmpresasService } from './empresas.service';
 export { FretesService } from './fretes.service';
 export { NotificacoesService } from './notificacoes.service';
 export { UploadService } from './upload.service';
+export { VeiculosService } from './veiculos.service';
 
 export type { LoginResult, SignUpResult, EmpresaStatusResult } from './auth.service';
 export type { CadastroMotoristaData, MotoristaData } from './motoristas.service';
 export type { CadastroEmpresaData, EmpresaData } from './empresas.service';
 export type { CriarFreteData, FreteData } from './fretes.service';
 export type { Notificacao } from './notificacoes.service';
+export type { VeiculoData, CriarVeiculoData } from './veiculos.service';

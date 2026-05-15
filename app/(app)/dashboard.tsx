@@ -8,7 +8,7 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, F
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/hooks/useAuth';
-import { FretesService, NotificacoesService } from '@/services';
+import { FretesService, NotificacoesService, VeiculosService } from '@/services';
 import { LoadingSpinner, Badge, CancelModal } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 import { useRouter } from 'expo-router';
@@ -23,10 +23,15 @@ function DashboardMotorista() {
   const [stats, setStats] = useState({ cargasDisponiveis: 0, cargasEmTransporte: 0, cargasTransportadas: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [tiposVeiculos, setTiposVeiculos] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     if (!motorista) return;
-    const s = await FretesService.buscarEstatisticasMotorista(motorista.id, motorista.tipo_veiculo);
+    // Busca tipos de veículos cadastrados
+    const tipos = await VeiculosService.buscarTiposVeiculos(motorista.id);
+    const tiposFinais = tipos.length > 0 ? tipos : (motorista.tipo_veiculo ? [motorista.tipo_veiculo] : []);
+    setTiposVeiculos(tiposFinais);
+    const s = await FretesService.buscarEstatisticasMotorista(motorista.id, tiposFinais);
     setStats(s);
     setLoading(false);
   }, [motorista]);
@@ -63,7 +68,7 @@ function DashboardMotorista() {
         </View>
         <View style={styles.heroVehicle}>
           <Ionicons name="car-sport" size={16} color="rgba(255,255,255,0.8)" />
-          <Text style={styles.heroVehicleText}>{motorista.tipo_veiculo}</Text>
+          <Text style={styles.heroVehicleText}>{tiposVeiculos.length > 1 ? `${tiposVeiculos.length} veículos` : (tiposVeiculos[0] || motorista.tipo_veiculo)}</Text>
         </View>
       </LinearGradient>
 
@@ -75,7 +80,7 @@ function DashboardMotorista() {
           </View>
           <Text style={[styles.statValue, { color: COLORS.primary }]}>{stats.cargasDisponiveis}</Text>
           <Text style={styles.statLabel}>Disponíveis</Text>
-          <Text style={styles.statDetail}>Para {motorista.tipo_veiculo}</Text>
+          <Text style={styles.statDetail}>Para seus veículos</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.statCard} onPress={() => router.push('/(app)/cargas')} activeOpacity={0.7}>

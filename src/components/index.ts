@@ -6,3 +6,4 @@ export { Card, CardHeader, CardContent } from './Card';
 export { CidadeEstadoSelect } from './CidadeEstadoSelect';
 export { CancelModal } from './CancelModal';
 export { ActionMenu } from './ActionMenu';
+export { VeiculosManager } from './VeiculosManager';

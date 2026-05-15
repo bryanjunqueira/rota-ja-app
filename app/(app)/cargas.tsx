@@ -9,7 +9,7 @@ import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { FretesService, NotificacoesService } from '@/services';
+import { FretesService, NotificacoesService, VeiculosService } from '@/services';
 import { LoadingSpinner, CidadeEstadoSelect, Button, CancelModal } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -96,9 +96,16 @@ function CargasMotorista() {
   // States para ações
   const [actionMenuVisible, setActionMenuVisible] = useState<string | null>(null);
 
+  // Multi-veículos: tipos de veículos cadastrados pelo motorista
+  const [tiposVeiculos, setTiposVeiculos] = useState<string[]>(motorista?.tipo_veiculo ? [motorista.tipo_veiculo] : []);
+
   const loadCargas = useCallback(async () => {
     if (!motorista) return;
     setLoading(true);
+    // Carrega tipos de veículos do motorista (multi-veículos)
+    const tipos = await VeiculosService.buscarTiposVeiculos(motorista.id);
+    if (tipos.length > 0) setTiposVeiculos(tipos);
+    else if (motorista.tipo_veiculo) setTiposVeiculos([motorista.tipo_veiculo]);
     if (viewMode === 'disponiveis') {
       const result = await FretesService.buscarTodosFretes();
       setAllCargas(result.data);
@@ -149,35 +156,38 @@ function CargasMotorista() {
     ]);
   };
 
-  // Filtro local com compatibilidade automática de veículo
+  // Filtro local com compatibilidade automática de TODOS os veículos cadastrados
   const cargasFiltradas = useMemo(() => {
+    // Compatibilidade: cada tipo de veículo carrega fretes daquele mesmo tipo
+    // O motorista cadastra TODOS os veículos que possui e vê as cargas de cada um
+    const hierarquia: Record<string, string[]> = {
+      // Pesados
+      'Bitrem': ['Bitrem'], 'Carreta': ['Carreta'], 'Carreta LS': ['Carreta LS'],
+      'Rodotrem': ['Rodotrem'], 'Vanderleia': ['Vanderleia'],
+      // Médios
+      'Bitruck': ['Bitruck'], 'Truck': ['Truck'],
+      // Leves
+      '3x4': ['3x4'], 'Fiorino': ['Fiorino'], 'Toco': ['Toco'],
+      // Legado
+      'Van': ['Van'], 'Caminhonete': ['Caminhonete'],
+    };
+    // Combina compatibilidade de TODOS os veículos do motorista
+    const todosCompativeis = new Set<string>();
+    tiposVeiculos.forEach(tipo => {
+      (hierarquia[tipo] || [tipo]).forEach(t => todosCompativeis.add(t));
+    });
+
     return allCargas.filter(frete => {
-      // Filtrar por origem (busca parcial)
       const origemStr = `${frete.origem_cidade}, ${frete.origem_estado}`;
       const matchOrigem = !filtroOrigem || origemStr === filtroOrigem ||
         frete.origem_cidade.toLowerCase().includes(filtroOrigem.toLowerCase());
-
-      // Filtrar por destino (busca parcial)
       const destinoStr = `${frete.destino_cidade}, ${frete.destino_estado}`;
       const matchDestino = !filtroDestino || destinoStr === filtroDestino ||
         frete.destino_cidade.toLowerCase().includes(filtroDestino.toLowerCase());
-
-      // Compatibilidade automática baseada no veículo cadastrado
-      const hierarquia: Record<string, string[]> = {
-        'Carreta': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck', 'Carreta'],
-        'Bitruck': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck'],
-        'Truck': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck'],
-        'Toco': ['Fiorino', 'Van', 'Caminhonete', 'Toco'],
-        'Caminhonete': ['Fiorino', 'Van', 'Caminhonete'],
-        'Van': ['Fiorino', 'Van'],
-        'Fiorino': ['Fiorino'],
-      };
-      const veiculosCompativeis = motorista ? (hierarquia[motorista.tipo_veiculo] || [motorista.tipo_veiculo]) : [];
-      const isCompatible = motorista ? veiculosCompativeis.includes(frete.tipo_veiculo) : true;
-
+      const isCompatible = todosCompativeis.size > 0 ? todosCompativeis.has(frete.tipo_veiculo) : true;
       return matchOrigem && matchDestino && isCompatible;
     });
-  }, [allCargas, filtroOrigem, filtroDestino, motorista]);
+  }, [allCargas, filtroOrigem, filtroDestino, tiposVeiculos]);
 
   if (motorista?.status !== 'aprovado') {
     return (
@@ -220,7 +230,7 @@ function CargasMotorista() {
               {/* Titulo */}
               <View style={styles.filterTitleRow}>
                 <Ionicons name="cube-outline" size={20} color={COLORS.primary} />
-                <Text style={styles.filterTitle}>Cargas compatíveis com {motorista?.tipo_veiculo}</Text>
+                <Text style={styles.filterTitle}>Cargas compatíveis com seu veículo</Text>
               </View>
 
               {/* Filtro: Origem */}

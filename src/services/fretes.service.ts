@@ -53,9 +53,9 @@ export interface FreteData {
 
 export const FretesService = {
   /**
-   * Busca estatísticas do motorista
+   * Busca estatísticas do motorista (suporta múltiplos veículos)
    */
-  async buscarEstatisticasMotorista(motoristaId: string, tipoVeiculo: string) {
+  async buscarEstatisticasMotorista(motoristaId: string, tiposVeiculo: string | string[]) {
     try {
       const { data, error } = await supabase
         .from('fretes')
@@ -63,26 +63,29 @@ export const FretesService = {
         .or(`motorista_id.eq.${motoristaId},and(status.eq.disponivel,motorista_id.is.null)`);
       if (error) return { cargasDisponiveis: 0, cargasEmTransporte: 0, cargasTransportadas: 0 };
 
-      // Hierarquia de compatibilidade de veículos
-      const compativel = (tipoFrete: string) => {
-        const hierarquia: Record<string, string[]> = {
-          'Carreta': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck', 'Carreta'],
-          'Bitruck': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck', 'Bitruck'],
-          'Truck': ['Fiorino', 'Van', 'Caminhonete', 'Toco', 'Truck'],
-          'Toco': ['Fiorino', 'Van', 'Caminhonete', 'Toco'],
-          'Caminhonete': ['Fiorino', 'Van', 'Caminhonete'],
-          'Van': ['Fiorino', 'Van'],
-          'Fiorino': ['Fiorino'],
-        };
-        const veiculosCompativeis = hierarquia[tipoVeiculo] || [tipoVeiculo];
-        return veiculosCompativeis.includes(tipoFrete);
+      // Compatibilidade: cada tipo de veículo carrega fretes daquele mesmo tipo
+      // O motorista cadastra TODOS os veículos que possui, e vê cargas de cada um
+      const hierarquia: Record<string, string[]> = {
+        // Pesados
+        'Bitrem': ['Bitrem'], 'Carreta': ['Carreta'], 'Carreta LS': ['Carreta LS'],
+        'Rodotrem': ['Rodotrem'], 'Vanderleia': ['Vanderleia'],
+        // Médios
+        'Bitruck': ['Bitruck'], 'Truck': ['Truck'],
+        // Leves
+        '3x4': ['3x4'], 'Fiorino': ['Fiorino'], 'Toco': ['Toco'],
+        // Legado (compatibilidade retroativa)
+        'Van': ['Van'], 'Caminhonete': ['Caminhonete'],
       };
+      // Combina compatibilidade de TODOS os veículos
+      const tipos = Array.isArray(tiposVeiculo) ? tiposVeiculo : [tiposVeiculo];
+      const todosCompativeis = new Set<string>();
+      tipos.forEach(t => (hierarquia[t] || [t]).forEach(v => todosCompativeis.add(v)));
 
       return {
         cargasDisponiveis: data?.filter(f =>
           f.status === 'disponivel' &&
           f.motorista_id === null &&
-          compativel(f.tipo_veiculo)
+          todosCompativeis.has(f.tipo_veiculo)
         ).length || 0,
         cargasEmTransporte: data?.filter(f =>
           ['aceito', 'em_transporte'].includes(f.status) &&

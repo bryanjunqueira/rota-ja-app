@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { MotoristasService } from '@/services';
+import { MotoristasService, VeiculosService } from '@/services';
 import { Button, Input } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
 
@@ -106,6 +106,19 @@ export default function CadastroMotoristaScreen() {
     setLoading(false);
 
     if (motResult.success) {
+      // 3. Criar veículo na tabela veiculos_motorista (multi-veículos)
+      // Busca o motorista recém-criado para pegar o ID
+      const motData = await MotoristasService.buscarPorUserId(authResult.userId);
+      if (motData.data?.id) {
+        await VeiculosService.adicionar({
+          motoristaId: motData.data.id,
+          tipoVeiculo: form.tipoVeiculo,
+          modelo: '',
+          placa: form.placaVeiculo.trim().toUpperCase(),
+          tipoCarroceria: form.tipoCarroceria,
+        });
+      }
+
       Alert.alert('Cadastro realizado!', 'Verifique seu email para confirmar a conta.', [
         { text: 'OK', onPress: () => { refreshProfile(); router.replace('/(auth)/login'); } }
       ]);
