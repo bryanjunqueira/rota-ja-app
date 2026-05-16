@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity, Alert, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '@/hooks/useAuth';
 import { FretesService, CriarFreteData } from '@/services/fretes.service';
 import { Button, Input } from '@/components';
@@ -20,6 +21,8 @@ export default function NovoFreteScreen() {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1); // 1: rota, 2: endereços, 3: carga+valor
   const [pedagogio, setPedagogio] = useState(false);
+  const [showColetaPicker, setShowColetaPicker] = useState(false);
+  const [showPrazoPicker, setShowPrazoPicker] = useState(false);
 
   const [form, setForm] = useState({
     origemCidade: '', origemEstado: '', destinoCidade: '', destinoEstado: '',
@@ -210,10 +213,40 @@ export default function NovoFreteScreen() {
               <Text style={styles.sectionHeader}>Datas</Text>
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
-                  <Input label="Data de Coleta" placeholder="2025-12-31" value={form.dataColeta} onChangeText={v => update('dataColeta', v)} error={errors.dataColeta} required />
+                  <TouchableOpacity onPress={() => setShowColetaPicker(true)}>
+                    <View pointerEvents="none">
+                      <Input label="Data de Coleta" placeholder="Selecione..." value={form.dataColeta ? new Date(form.dataColeta + 'T12:00:00Z').toLocaleDateString('pt-BR') : ''} error={errors.dataColeta} required editable={false} />
+                    </View>
+                  </TouchableOpacity>
+                  {showColetaPicker && (
+                    <DateTimePicker
+                      value={form.dataColeta ? new Date(form.dataColeta + 'T12:00:00Z') : new Date()}
+                      mode="date"
+                      display="default"
+                      onChange={(event, selectedDate) => {
+                        setShowColetaPicker(false);
+                        if (selectedDate) update('dataColeta', selectedDate.toISOString().split('T')[0]);
+                      }}
+                    />
+                  )}
                 </View>
                 <View style={{ flex: 1, marginLeft: SPACING.sm }}>
-                  <Input label="Prazo de Entrega" placeholder="2025-12-31" value={form.prazoEntrega} onChangeText={v => update('prazoEntrega', v)} error={errors.prazoEntrega} required />
+                  <TouchableOpacity onPress={() => setShowPrazoPicker(true)}>
+                    <View pointerEvents="none">
+                      <Input label="Prazo de Entrega" placeholder="Selecione..." value={form.prazoEntrega ? new Date(form.prazoEntrega + 'T12:00:00Z').toLocaleDateString('pt-BR') : ''} error={errors.prazoEntrega} required editable={false} />
+                    </View>
+                  </TouchableOpacity>
+                  {showPrazoPicker && (
+                    <DateTimePicker
+                      value={form.prazoEntrega ? new Date(form.prazoEntrega + 'T12:00:00Z') : new Date()}
+                      mode="date"
+                      display="default"
+                      onChange={(event, selectedDate) => {
+                        setShowPrazoPicker(false);
+                        if (selectedDate) update('prazoEntrega', selectedDate.toISOString().split('T')[0]);
+                      }}
+                    />
+                  )}
                 </View>
               </View>
 

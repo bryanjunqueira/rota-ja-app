@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, ScrollView, Modal, TextInput } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useGlobalSearchParams } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { FretesService, NotificacoesService, VeiculosService } from '@/services';
 import { LoadingSpinner, CidadeEstadoSelect, Button, CancelModal } from '@/components';
@@ -40,6 +40,13 @@ function CargasMotorista() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [viewMode, setViewMode] = useState<'disponiveis' | 'minhas'>('disponiveis');
+  const [minhasCargasSubTab, setMinhasCargasSubTab] = useState<'todas' | 'aceitos' | 'em_transporte' | 'entregues'>('todas');
+  const params = useGlobalSearchParams();
+
+  useEffect(() => {
+    if (params.viewMode) setViewMode(params.viewMode as any);
+    if (params.subTab) setMinhasCargasSubTab(params.subTab as any);
+  }, [params.viewMode, params.subTab]);
   
   // Controle do Modal de Devolução
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
@@ -60,22 +67,27 @@ function CargasMotorista() {
     setCancelling(true);
     
     // 1. Pega dados do frete antes de devolver para notificar a empresa
-    const frete = allCargas.find(f => f.id === selectedFreteId);
+    const frete = selectedFrete || minhasCargas.find(f => f.id === selectedFreteId);
+    console.log('[handleDevolver] Tentando devolver frete:', selectedFreteId, 'User Empresa:', frete?.user_id);
     
-    // 2. Devolve o frete
+    // Envia a notificação ANTES de devolver o frete. 
+    // Isso evita que o RLS bloqueie a notificação caso o motorista perca a posse do frete no banco.
+    if (frete?.user_id) {
+      console.log('[handleDevolver] Enviando notificação prévia para:', frete.user_id);
+      await NotificacoesService.enviar(
+        frete.user_id,
+        'Carga devolvida pelo motorista',
+        `O motorista ${motorista?.nome_completo} devolveu o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}`,
+        selectedFreteId
+      );
+    } else {
+      console.warn('[handleDevolver] ALERTA: frete.user_id está indefinido. Não foi possível enviar notificação.');
+    }
+
+    // 2. Devolve o frete no banco
     const result = await FretesService.devolverFrete(selectedFreteId, motivo, mensagem);
     
     if (result.success) {
-      // 3. Notifica a empresa
-      if (frete?.user_id) {
-        await NotificacoesService.enviar(
-          frete.user_id,
-          'Carga devolvida pelo motorista',
-          `O motorista ${motorista?.nome_completo} devolveu o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}`,
-          selectedFreteId
-        );
-      }
-      
       Alert.alert('Sucesso', 'Frete devolvido. Ele voltará a ficar disponível para outros motoristas.');
       loadCargas(); // Recarrega lista
       setCancelModalVisible(false);
@@ -135,13 +147,21 @@ function CargasMotorista() {
   }, [focusCount, loadCargas]);
   const onRefresh = async () => { setRefreshing(true); await loadCargas(); setRefreshing(false); };
 
-  const handleAceitar = async (freteId: string) => {
+  const handleAceitar = async (frete: any) => {
     if (!motorista) return;
     Alert.alert('Coletar Frete', 'Deseja aceitar e coletar esta carga?', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Coletar', onPress: async () => {
-        const result = await FretesService.aceitarCarga(freteId, motorista.id);
+        const result = await FretesService.aceitarCarga(frete.id, motorista.id);
         if (result.success) { 
+          if (frete.user_id) {
+            await NotificacoesService.enviar(
+              frete.user_id,
+              'Frete Aceito',
+              `O motorista ${motorista.nome_completo} aceitou sua carga!`,
+              frete.id
+            );
+          }
           Alert.alert('Frete coletado!', 'O frete foi aceito e está agora em suas cargas.'); 
           setDetailsVisible(false);
           loadCargas(); 
@@ -156,13 +176,22 @@ function CargasMotorista() {
     setDetailsVisible(true);
   };
 
-  const handleUpdateStatus = async (freteId: string, status: 'em_transporte' | 'entregue') => {
+  const handleUpdateStatus = async (frete: any, status: 'em_transporte' | 'entregue') => {
     const action = status === 'em_transporte' ? 'iniciar o transporte' : 'finalizar a entrega';
     Alert.alert('Confirmar', `Deseja ${action} desta carga?`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Confirmar', onPress: async () => {
-        const result = await FretesService.atualizarStatusCarga(freteId, status);
+        const result = await FretesService.atualizarStatusCarga(frete.id, status);
         if (result.success) {
+          if (frete.user_id) {
+            const actionText = status === 'em_transporte' ? 'iniciou o transporte' : 'finalizou a entrega';
+            await NotificacoesService.enviar(
+              frete.user_id,
+              `Frete ${status === 'em_transporte' ? 'em transporte' : 'entregue'}`,
+              `O motorista ${motorista.nome_completo} ${actionText} da sua carga.`,
+              frete.id
+            );
+          }
           Alert.alert('Sucesso!', `O status da carga foi atualizado para ${status === 'em_transporte' ? 'em transporte' : 'entregue'}.`);
           loadCargas();
         } else {
@@ -203,6 +232,14 @@ function CargasMotorista() {
     });
   }, [allCargas, filtroOrigem, filtroDestino, tiposVeiculos]);
 
+  const minhasCargasFiltradas = useMemo(() => {
+    if (minhasCargasSubTab === 'todas') return minhasCargas;
+    if (minhasCargasSubTab === 'aceitos') return minhasCargas.filter(c => c.status === 'aceito');
+    if (minhasCargasSubTab === 'em_transporte') return minhasCargas.filter(c => c.status === 'em_transporte');
+    if (minhasCargasSubTab === 'entregues') return minhasCargas.filter(c => c.status === 'entregues' || c.status === 'entregue');
+    return minhasCargas;
+  }, [minhasCargas, minhasCargasSubTab]);
+
   if (motorista?.status !== 'aprovado') {
     return (
       <View style={styles.blockedContainer}>
@@ -234,7 +271,7 @@ function CargasMotorista() {
       </View>
 
       <FlatList
-        data={viewMode === 'disponiveis' ? cargasFiltradas : minhasCargas}
+        data={viewMode === 'disponiveis' ? cargasFiltradas : minhasCargasFiltradas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
@@ -311,9 +348,29 @@ function CargasMotorista() {
               </View>
             </View>
           ) : (
-            <View style={styles.minhasHeader}>
-              <Ionicons name="briefcase" size={20} color={COLORS.primary} />
-              <Text style={styles.minhasTitle}>Minhas Cargas Aceitas</Text>
+            <View>
+              <View style={styles.minhasHeader}>
+                <Ionicons name="briefcase" size={20} color={COLORS.primary} />
+                <Text style={styles.minhasTitle}>Minhas Cargas</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15, flexDirection: 'row' }}>
+                {[
+                  { key: 'todas', label: 'Todas' },
+                  { key: 'aceitos', label: 'Aceitos' },
+                  { key: 'em_transporte', label: 'Em Transporte' },
+                  { key: 'entregues', label: 'Finalizados' },
+                ].map(f => (
+                  <TouchableOpacity
+                    key={f.key}
+                    style={[styles.toggleBtn, minhasCargasSubTab === f.key && styles.toggleBtnActive, { marginRight: 8, paddingHorizontal: 12, paddingVertical: 6, flex: 0 }]}
+                    onPress={() => setMinhasCargasSubTab(f.key as any)}
+                  >
+                    <Text style={[styles.toggleText, minhasCargasSubTab === f.key && styles.toggleTextActive, { fontSize: 13 }]}>
+                      {f.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           )
         }
@@ -375,7 +432,7 @@ function CargasMotorista() {
                   {(item.status === 'aceito' || item.status === 'em_transporte') && viewMode === 'minhas' && (
                     <TouchableOpacity 
                       style={[styles.popoverItem, { borderBottomWidth: 0 }]}
-                      onPress={() => { setActionMenuVisible(null); setSelectedFreteId(item.id); setCancelModalVisible(true); }}
+                      onPress={() => { setActionMenuVisible(null); setSelectedFreteId(item.id); setSelectedFrete(item); setCancelModalVisible(true); }}
                     >
                       <Text style={[styles.popoverText, { color: COLORS.error }]}>Devolver</Text>
                     </TouchableOpacity>
@@ -435,7 +492,7 @@ function CargasMotorista() {
               {viewMode === 'disponiveis' ? (
                 <TouchableOpacity
                   style={styles.coletarBtn}
-                  onPress={() => handleAceitar(item.id)}
+                  onPress={() => handleAceitar(item)}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="checkmark-circle" size={16} color={COLORS.white} />
@@ -446,7 +503,7 @@ function CargasMotorista() {
                   {item.status === 'aceito' && (
                     <TouchableOpacity
                       style={[styles.coletarBtn, { backgroundColor: COLORS.info }]}
-                      onPress={() => handleUpdateStatus(item.id, 'em_transporte')}
+                      onPress={() => handleUpdateStatus(item, 'em_transporte')}
                       activeOpacity={0.8}
                     >
                       <Ionicons name="play" size={16} color={COLORS.white} />
@@ -456,7 +513,7 @@ function CargasMotorista() {
                   {item.status === 'em_transporte' && (
                     <TouchableOpacity
                       style={[styles.coletarBtn, { backgroundColor: COLORS.success }]}
-                      onPress={() => handleUpdateStatus(item.id, 'entregue')}
+                      onPress={() => handleUpdateStatus(item, 'entregue')}
                       activeOpacity={0.8}
                     >
                       <Ionicons name="checkmark-done" size={16} color={COLORS.white} />
@@ -649,7 +706,7 @@ function CargasMotorista() {
               {selectedFrete?.status === 'disponivel' && (
                 <Button 
                   title="Coletar este Frete" 
-                  onPress={() => handleAceitar(selectedFrete?.id)}
+                  onPress={() => handleAceitar(selectedFrete)}
                   style={{ marginTop: 10 }}
                 />
               )}

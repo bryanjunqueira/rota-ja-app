@@ -84,8 +84,11 @@ export default function AppLayout() {
   };
 
   const handleTabPress = (index: number) => {
-    setActiveIndex(index);
-    pagerRef.current?.setPage(index);
+    if (index !== activeIndex) {
+      setActiveIndex(index);
+      pagerRef.current?.setPage(index);
+      router.navigate(`/(app)/${ROUTES[index]}`);
+    }
   };
 
   const cargasTitle = role === 'empresa' ? 'Fretes' : 'Cargas';

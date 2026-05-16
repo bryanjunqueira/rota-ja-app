@@ -20,7 +20,7 @@ function DashboardMotorista() {
   const { motorista } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [stats, setStats] = useState({ cargasDisponiveis: 0, cargasEmTransporte: 0, cargasTransportadas: 0 });
+  const [stats, setStats] = useState({ cargasDisponiveis: 0, cargasAceitas: 0, cargasEmTransporte: 0, cargasTransportadas: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tiposVeiculos, setTiposVeiculos] = useState<string[]>([]);
@@ -73,7 +73,7 @@ function DashboardMotorista() {
 
       {/* Stats Cards */}
       <View style={styles.statsGrid}>
-        <TouchableOpacity style={styles.statCard} onPress={() => router.push('/(app)/cargas')} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.statCard} onPress={() => router.navigate({ pathname: '/(app)/cargas', params: { viewMode: 'disponiveis', subTab: 'todas' } })} activeOpacity={0.7}>
           <View style={[styles.statIconBg, { backgroundColor: COLORS.primaryFaded }]}>
             <Ionicons name="cube-outline" size={20} color={COLORS.primary} />
           </View>
@@ -82,7 +82,16 @@ function DashboardMotorista() {
           <Text style={styles.statDetail}>Para seus veículos</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.statCard} onPress={() => router.push('/(app)/cargas')} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.statCard} onPress={() => router.navigate({ pathname: '/(app)/cargas', params: { viewMode: 'minhas', subTab: 'aceitos' } })} activeOpacity={0.7}>
+          <View style={[styles.statIconBg, { backgroundColor: COLORS.infoLight || '#E0F2FE' }]}>
+            <Ionicons name="clipboard-outline" size={20} color={COLORS.info || '#0284C7'} />
+          </View>
+          <Text style={[styles.statValue, { color: COLORS.info || '#0284C7' }]}>{stats.cargasAceitas || 0}</Text>
+          <Text style={styles.statLabel}>Cargas Aceitas</Text>
+          <Text style={styles.statDetail}>Aguardando início</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.statCard} onPress={() => router.navigate({ pathname: '/(app)/cargas', params: { viewMode: 'minhas', subTab: 'em_transporte' } })} activeOpacity={0.7}>
           <View style={[styles.statIconBg, { backgroundColor: COLORS.accentFaded }]}>
             <Ionicons name="swap-horizontal" size={20} color={COLORS.accent} />
           </View>
@@ -91,29 +100,14 @@ function DashboardMotorista() {
           <Text style={styles.statDetail}>Cargas ativas</Text>
         </TouchableOpacity>
 
-        <View style={styles.statCard}>
+        <TouchableOpacity style={styles.statCard} onPress={() => router.navigate({ pathname: '/(app)/cargas', params: { viewMode: 'minhas', subTab: 'entregues' } })} activeOpacity={0.7}>
           <View style={[styles.statIconBg, { backgroundColor: COLORS.successLight }]}>
             <Ionicons name="checkmark-done" size={20} color={COLORS.success} />
           </View>
           <Text style={[styles.statValue, { color: COLORS.success }]}>{stats.cargasTransportadas}</Text>
           <Text style={styles.statLabel}>Entregues</Text>
           <Text style={styles.statDetail}>Concluídas</Text>
-        </View>
-
-        <View style={styles.statCardStatus}>
-          <View style={[styles.statIconBg, { backgroundColor: statusInfo.bg }]}>
-            <Ionicons name={status === 'aprovado' ? 'shield-checkmark' : 'hourglass-outline'} size={20} color={statusInfo.text} />
-          </View>
-          <View style={{ alignItems: 'center', gap: 4 }}>
-            <Text style={[styles.statLabel, { marginTop: 0 }]}>Status</Text>
-            <Badge variant={status === 'aprovado' ? 'success' : status === 'pendente' ? 'warning' : 'destructive'}>
-              {getStatusLabel(status)}
-            </Badge>
-          </View>
-          <Text style={styles.statDetail}>
-            {status === 'aprovado' ? 'Conta verificada' : status === 'pendente' ? 'Aguardando' : 'Contate suporte'}
-          </Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Aviso de aprovação pendente */}

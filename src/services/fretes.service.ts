@@ -76,8 +76,12 @@ export const FretesService = {
           f.motorista_id === null &&
           veiculosCompativeis.has((f.tipo_veiculo || '').trim().toLowerCase())
         ).length || 0,
+        cargasAceitas: data?.filter(f =>
+          f.status === 'aceito' &&
+          f.motorista_id === motoristaId
+        ).length || 0,
         cargasEmTransporte: data?.filter(f =>
-          ['aceito', 'em_transporte'].includes(f.status) &&
+          f.status === 'em_transporte' &&
           f.motorista_id === motoristaId
         ).length || 0,
         cargasTransportadas: data?.filter(f =>
@@ -85,7 +89,7 @@ export const FretesService = {
           f.motorista_id === motoristaId
         ).length || 0,
       };
-    } catch { return { cargasDisponiveis: 0, cargasEmTransporte: 0, cargasTransportadas: 0 }; }
+    } catch { return { cargasDisponiveis: 0, cargasAceitas: 0, cargasEmTransporte: 0, cargasTransportadas: 0 }; }
   },
 
   /**
@@ -115,14 +119,27 @@ export const FretesService = {
       if (status === 'em_transporte') updateData.data_inicio_transporte = new Date().toISOString();
       if (status === 'entregue') updateData.data_entrega = new Date().toISOString();
 
-      const { error } = await supabase
+      console.log('[atualizarStatusCarga] Atualizando frete:', freteId, 'para status:', status);
+      const { data, error } = await supabase
         .from('fretes')
         .update(updateData)
-        .eq('id', freteId);
+        .eq('id', freteId)
+        .select('id, status');
       
-      if (error) return { success: false, error: 'Erro ao atualizar status.' };
+      if (error) {
+        console.error('[atualizarStatusCarga] ERRO:', error);
+        return { success: false, error: 'Erro ao atualizar status.' };
+      }
+      if (!data || data.length === 0) {
+        console.error('[atualizarStatusCarga] BLOQUEADO POR RLS - 0 linhas atualizadas');
+        return { success: false, error: 'Sem permissão para atualizar. Verifique as políticas do banco.' };
+      }
+      console.log('[atualizarStatusCarga] SUCESSO:', data);
       return { success: true };
-    } catch { return { success: false, error: 'Erro inesperado.' }; }
+    } catch (e) {
+      console.error('[atualizarStatusCarga] EXCEÇÃO:', e);
+      return { success: false, error: 'Erro inesperado.' };
+    }
   },
 
   /**
@@ -232,15 +249,28 @@ export const FretesService = {
    */
   async aceitarCarga(freteId: string, motoristaId: string) {
     try {
-      const { error } = await supabase
+      console.log('[aceitarCarga] Aceitando frete:', freteId, 'motorista:', motoristaId);
+      const { data, error } = await supabase
         .from('fretes')
         .update({ motorista_id: motoristaId, status: 'aceito', data_aceite: new Date().toISOString() })
         .eq('id', freteId)
         .eq('status', 'disponivel')
-        .is('motorista_id', null);
-      if (error) return { success: false, error: 'Carga já foi aceita por outro motorista.' };
+        .is('motorista_id', null)
+        .select('id, status, motorista_id');
+      if (error) {
+        console.error('[aceitarCarga] ERRO:', error);
+        return { success: false, error: 'Carga já foi aceita por outro motorista.' };
+      }
+      if (!data || data.length === 0) {
+        console.error('[aceitarCarga] BLOQUEADO POR RLS - 0 linhas atualizadas. O motorista não tem permissão UPDATE na tabela fretes.');
+        return { success: false, error: 'Sem permissão para aceitar. Verifique as políticas do banco.' };
+      }
+      console.log('[aceitarCarga] SUCESSO:', data);
       return { success: true };
-    } catch { return { success: false, error: 'Erro inesperado ao aceitar carga.' }; }
+    } catch (e) {
+      console.error('[aceitarCarga] EXCEÇÃO:', e);
+      return { success: false, error: 'Erro inesperado ao aceitar carga.' };
+    }
   },
 
   /**
@@ -380,7 +410,8 @@ export const FretesService = {
    */
   async devolverFrete(freteId: string, motivo: string, mensagem?: string) {
     try {
-      const { error } = await supabase
+      console.log('[devolverFrete] Devolvendo frete:', freteId, 'Motivo:', motivo);
+      const { data, error } = await supabase
         .from('fretes')
         .update({ 
           status: 'disponivel', 
@@ -390,11 +421,21 @@ export const FretesService = {
           mensagem_devolucao: mensagem || null,
           data_devolucao: new Date().toISOString()
         })
-        .eq('id', freteId);
+        .eq('id', freteId)
+        .select('id, status');
       
-      if (error) return { success: false, error: error.message };
+      if (error) {
+        console.error('[devolverFrete] ERRO:', error);
+        return { success: false, error: error.message };
+      }
+      if (!data || data.length === 0) {
+        console.error('[devolverFrete] BLOQUEADO POR RLS - 0 linhas atualizadas');
+        return { success: false, error: 'Sem permissão para devolver. Verifique as políticas do banco.' };
+      }
+      console.log('[devolverFrete] SUCESSO:', data);
       return { success: true };
     } catch (e: any) { 
+      console.error('[devolverFrete] EXCEÇÃO:', e);
       return { success: false, error: e.message || 'Erro inesperado.' }; 
     }
   },
