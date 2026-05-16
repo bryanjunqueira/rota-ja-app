@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, Alert, ScrollView, Modal, TextInput } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { FretesService, NotificacoesService, VeiculosService } from '@/services';
 import { LoadingSpinner, CidadeEstadoSelect, Button, CancelModal } from '@/components';
@@ -97,26 +97,42 @@ function CargasMotorista() {
   const [actionMenuVisible, setActionMenuVisible] = useState<string | null>(null);
 
   // Multi-veículos: tipos de veículos cadastrados pelo motorista
-  const [tiposVeiculos, setTiposVeiculos] = useState<string[]>(motorista?.tipo_veiculo ? [motorista.tipo_veiculo] : []);
+  const [tiposVeiculos, setTiposVeiculos] = useState<string[]>([]);
+
+  // Contador para forçar reload a cada foco na aba
+  const [focusCount, setFocusCount] = useState(0);
+
+  // Força reload ao entrar na aba
+  useFocusEffect(
+    useCallback(() => {
+      setFocusCount(c => c + 1);
+    }, [])
+  );
 
   const loadCargas = useCallback(async () => {
     if (!motorista) return;
     setLoading(true);
-    // Carrega tipos de veículos do motorista (multi-veículos)
-    const tipos = await VeiculosService.buscarTiposVeiculos(motorista.id);
-    if (tipos.length > 0) setTiposVeiculos(tipos);
-    else if (motorista.tipo_veiculo) setTiposVeiculos([motorista.tipo_veiculo]);
+
+    // Busca TODOS os tipos: tabela veiculos_motorista + campo legado motoristas.tipo_veiculo
+    const tipos = await VeiculosService.buscarTiposVeiculos(motorista.id, motorista.tipo_veiculo);
+    console.log('[CargasMotorista] Tipos de veículos encontrados:', tipos);
+    setTiposVeiculos(tipos);
+
     if (viewMode === 'disponiveis') {
       const result = await FretesService.buscarTodosFretes();
+      console.log('[CargasMotorista] Cargas disponíveis no banco:', result.data.length);
       setAllCargas(result.data);
     } else {
       const result = await FretesService.buscarHistoricoMotorista(motorista.id);
       setMinhasCargas(result.data);
     }
     setLoading(false);
-  }, [motorista, viewMode]);
+  }, [motorista?.id, motorista?.tipo_veiculo, viewMode]);
 
-  useEffect(() => { loadCargas(); }, [loadCargas]);
+  // Recarrega sempre que focusCount muda (= cada vez que a aba ganha foco)
+  useEffect(() => {
+    if (focusCount > 0) loadCargas();
+  }, [focusCount, loadCargas]);
   const onRefresh = async () => { setRefreshing(true); await loadCargas(); setRefreshing(false); };
 
   const handleAceitar = async (freteId: string) => {
@@ -158,33 +174,31 @@ function CargasMotorista() {
 
   // Filtro local com compatibilidade automática de TODOS os veículos cadastrados
   const cargasFiltradas = useMemo(() => {
-    // Compatibilidade: cada tipo de veículo carrega fretes daquele mesmo tipo
-    // O motorista cadastra TODOS os veículos que possui e vê as cargas de cada um
-    const hierarquia: Record<string, string[]> = {
-      // Pesados
-      'Bitrem': ['Bitrem'], 'Carreta': ['Carreta'], 'Carreta LS': ['Carreta LS'],
-      'Rodotrem': ['Rodotrem'], 'Vanderleia': ['Vanderleia'],
-      // Médios
-      'Bitruck': ['Bitruck'], 'Truck': ['Truck'],
-      // Leves
-      '3x4': ['3x4'], 'Fiorino': ['Fiorino'], 'Toco': ['Toco'],
-      // Legado
-      'Van': ['Van'], 'Caminhonete': ['Caminhonete'],
-    };
-    // Combina compatibilidade de TODOS os veículos do motorista
-    const todosCompativeis = new Set<string>();
+    // Monta set normalizado (lowercase+trim) com TODOS os tipos do motorista
+    const veiculosCompativeis = new Set<string>();
     tiposVeiculos.forEach(tipo => {
-      (hierarquia[tipo] || [tipo]).forEach(t => todosCompativeis.add(t));
+      if (tipo) veiculosCompativeis.add(tipo.trim().toLowerCase());
     });
 
+    console.log('[CargasMotorista] Filtrando por veículos:', Array.from(veiculosCompativeis));
+
     return allCargas.filter(frete => {
+      // Filtro de origem
       const origemStr = `${frete.origem_cidade}, ${frete.origem_estado}`;
       const matchOrigem = !filtroOrigem || origemStr === filtroOrigem ||
         frete.origem_cidade.toLowerCase().includes(filtroOrigem.toLowerCase());
+
+      // Filtro de destino
       const destinoStr = `${frete.destino_cidade}, ${frete.destino_estado}`;
       const matchDestino = !filtroDestino || destinoStr === filtroDestino ||
         frete.destino_cidade.toLowerCase().includes(filtroDestino.toLowerCase());
-      const isCompatible = todosCompativeis.size > 0 ? todosCompativeis.has(frete.tipo_veiculo) : true;
+
+      // Compatibilidade de veículo: se não há veículos cadastrados, mostra tudo
+      const freteVeiculo = (frete.tipo_veiculo || '').trim().toLowerCase();
+      const isCompatible = veiculosCompativeis.size > 0
+        ? veiculosCompativeis.has(freteVeiculo)
+        : true;
+
       return matchOrigem && matchDestino && isCompatible;
     });
   }, [allCargas, filtroOrigem, filtroDestino, tiposVeiculos]);
@@ -737,7 +751,11 @@ function CargasEmpresa({ userId }: { userId: string }) {
     setShowSearchModal(true);
   };
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const filteredPublic = useMemo(() => {

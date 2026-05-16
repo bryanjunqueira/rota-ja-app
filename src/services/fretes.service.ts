@@ -63,29 +63,18 @@ export const FretesService = {
         .or(`motorista_id.eq.${motoristaId},and(status.eq.disponivel,motorista_id.is.null)`);
       if (error) return { cargasDisponiveis: 0, cargasEmTransporte: 0, cargasTransportadas: 0 };
 
-      // Compatibilidade: cada tipo de veículo carrega fretes daquele mesmo tipo
-      // O motorista cadastra TODOS os veículos que possui, e vê cargas de cada um
-      const hierarquia: Record<string, string[]> = {
-        // Pesados
-        'Bitrem': ['Bitrem'], 'Carreta': ['Carreta'], 'Carreta LS': ['Carreta LS'],
-        'Rodotrem': ['Rodotrem'], 'Vanderleia': ['Vanderleia'],
-        // Médios
-        'Bitruck': ['Bitruck'], 'Truck': ['Truck'],
-        // Leves
-        '3x4': ['3x4'], 'Fiorino': ['Fiorino'], 'Toco': ['Toco'],
-        // Legado (compatibilidade retroativa)
-        'Van': ['Van'], 'Caminhonete': ['Caminhonete'],
-      };
-      // Combina compatibilidade de TODOS os veículos
+      // Monta set normalizado (lowercase+trim) com TODOS os tipos do motorista
       const tipos = Array.isArray(tiposVeiculo) ? tiposVeiculo : [tiposVeiculo];
-      const todosCompativeis = new Set<string>();
-      tipos.forEach(t => (hierarquia[t] || [t]).forEach(v => todosCompativeis.add(v)));
+      const veiculosCompativeis = new Set<string>();
+      tipos.forEach(t => {
+        if (t) veiculosCompativeis.add(t.trim().toLowerCase());
+      });
 
       return {
         cargasDisponiveis: data?.filter(f =>
           f.status === 'disponivel' &&
           f.motorista_id === null &&
-          todosCompativeis.has(f.tipo_veiculo)
+          veiculosCompativeis.has((f.tipo_veiculo || '').trim().toLowerCase())
         ).length || 0,
         cargasEmTransporte: data?.filter(f =>
           ['aceito', 'em_transporte'].includes(f.status) &&
@@ -174,7 +163,11 @@ export const FretesService = {
         .eq('status', 'disponivel')
         .is('motorista_id', null)
         .order('created_at', { ascending: false });
-      if (error) return { data: [], error: 'Erro ao carregar fretes.' };
+      if (error) {
+        console.error('[buscarTodosFretes] ERRO:', error);
+        return { data: [], error: 'Erro ao carregar fretes.' };
+      }
+      console.log('[buscarTodosFretes] Fretes encontrados:', data?.length, '| Tipos:', [...new Set(data?.map(f => f.tipo_veiculo))]);
       return { data: data || [] };
     } catch { return { data: [], error: 'Erro inesperado.' }; }
   },
@@ -299,6 +292,7 @@ export const FretesService = {
   async criarFrete(userId: string, dados: CriarFreteData) {
     try {
       // Buscar empresa_id pelo user_id (como no web)
+      console.log('[criarFrete] Buscando empresa para userId:', userId);
       const { data: empresa, error: empError } = await supabase
         .from('empresas')
         .select('id')
@@ -307,41 +301,51 @@ export const FretesService = {
         .maybeSingle();
 
       if (empError || !empresa) {
+        console.error('[criarFrete] Empresa NÃO encontrada:', empError);
         return { success: false, error: 'Não foi possível encontrar os dados da empresa.' };
       }
+      console.log('[criarFrete] Empresa encontrada:', empresa.id);
 
-      const { error } = await supabase
+      const insertData = {
+        empresa_id: empresa.id,
+        user_id: userId,
+        origem_cidade: dados.origemCidade,
+        origem_estado: dados.origemEstado,
+        destino_cidade: dados.destinoCidade,
+        destino_estado: dados.destinoEstado,
+        endereco_retirada: dados.enderecoRetirada,
+        cep_retirada: dados.cepRetirada,
+        numero_retirada: dados.numeroRetirada,
+        complemento_retirada: dados.complementoRetirada || null,
+        endereco_entrega: dados.enderecoEntrega,
+        cep_entrega: dados.cepEntrega,
+        numero_entrega: dados.numeroEntrega,
+        complemento_entrega: dados.complementoEntrega || null,
+        volume: dados.volume || null,
+        dimensao: dados.dimensao || null,
+        peso: dados.peso,
+        data_coleta: dados.dataColeta,
+        prazo_entrega: dados.prazoEntrega,
+        tipo_veiculo: dados.tipoVeiculo,
+        valor_frete: dados.valorFrete,
+        pedagogio_incluso: dados.pedagogioIncluso,
+        status: 'disponivel',
+      };
+      console.log('[criarFrete] Inserindo frete com tipo_veiculo:', insertData.tipo_veiculo, 'status:', insertData.status);
+
+      const { data: insertResult, error } = await supabase
         .from('fretes')
-        .insert({
-          empresa_id: empresa.id,
-          user_id: userId,
-          origem_cidade: dados.origemCidade,
-          origem_estado: dados.origemEstado,
-          destino_cidade: dados.destinoCidade,
-          destino_estado: dados.destinoEstado,
-          endereco_retirada: dados.enderecoRetirada,
-          cep_retirada: dados.cepRetirada,
-          numero_retirada: dados.numeroRetirada,
-          complemento_retirada: dados.complementoRetirada || null,
-          endereco_entrega: dados.enderecoEntrega,
-          cep_entrega: dados.cepEntrega,
-          numero_entrega: dados.numeroEntrega,
-          complemento_entrega: dados.complementoEntrega || null,
-          volume: dados.volume || null,
-          dimensao: dados.dimensao || null,
-          peso: dados.peso,
-          data_coleta: dados.dataColeta,
-          prazo_entrega: dados.prazoEntrega,
-          tipo_veiculo: dados.tipoVeiculo,
-          valor_frete: dados.valorFrete,
-          pedagogio_incluso: dados.pedagogioIncluso,
-        });
+        .insert(insertData)
+        .select('id, tipo_veiculo, status');
 
       if (error) {
+        console.error('[criarFrete] ERRO no insert:', error);
         return { success: false, error: 'Erro ao cadastrar frete. Tente novamente.' };
       }
+      console.log('[criarFrete] SUCESSO! Frete criado:', insertResult);
       return { success: true };
-    } catch {
+    } catch (e) {
+      console.error('[criarFrete] EXCEÇÃO:', e);
       return { success: false, error: 'Erro inesperado ao cadastrar frete.' };
     }
   },

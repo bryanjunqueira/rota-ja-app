@@ -15,6 +15,19 @@ const TIPOS_CARROCERIA = {
   abertas: ['Caçamba Grade Baixa', 'Graneleiro', 'Plataforma', 'Prancha'],
 };
 
+const VEICULO_ICONS: Record<string, string> = {
+  'Fiorino': 'car-sport',
+  '3x4': 'bus-outline',
+  'Toco': 'bus-outline',
+  'Truck': 'bus',
+  'Bitruck': 'bus',
+  'Carreta': 'train-outline',
+  'Carreta LS': 'train-outline',
+  'Bitrem': 'train',
+  'Rodotrem': 'train',
+  'Vanderleia': 'train'
+};
+
 interface Props { motoristaId: string; onVeiculosChange?: (tipos: string[]) => void; }
 
 export function VeiculosManager({ motoristaId, onVeiculosChange }: Props) {

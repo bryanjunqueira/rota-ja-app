@@ -108,18 +108,45 @@ export const VeiculosService = {
   },
 
   /**
-   * Busca tipos de veículos únicos do motorista (para filtro de cargas)
+   * Busca TODOS os tipos de veículos do motorista para filtro de cargas.
+   * Combina duas fontes:
+   *   1. Tabela veiculos_motorista (multi-veículos novos)
+   *   2. Campo legado motoristas.tipo_veiculo (veículo do cadastro inicial)
+   * Isso garante que o motorista NUNCA perca compatibilidade.
    */
-  async buscarTiposVeiculos(motoristaId: string): Promise<string[]> {
+  async buscarTiposVeiculos(motoristaId: string, legacyTipoVeiculo?: string): Promise<string[]> {
     try {
+      const todosSet = new Set<string>();
+
+      // 1. Fonte principal: tabela veiculos_motorista
       const { data, error } = await supabase
         .from('veiculos_motorista')
         .select('tipo_veiculo')
         .eq('motorista_id', motoristaId);
 
-      if (error || !data) return [];
-      return [...new Set(data.map(v => v.tipo_veiculo))];
-    } catch {
+      console.log('[buscarTiposVeiculos] Tabela veiculos_motorista:', { motoristaId, data, error: error?.message });
+
+      if (!error && data) {
+        data.forEach(v => {
+          if (v.tipo_veiculo) todosSet.add(v.tipo_veiculo.trim());
+        });
+      }
+
+      // 2. Fonte legado: campo tipo_veiculo da tabela motoristas
+      console.log('[buscarTiposVeiculos] Campo legado motoristas.tipo_veiculo:', legacyTipoVeiculo);
+      if (legacyTipoVeiculo && legacyTipoVeiculo.trim()) {
+        todosSet.add(legacyTipoVeiculo.trim());
+      }
+
+      const resultado = Array.from(todosSet);
+      console.log('[buscarTiposVeiculos] RESULTADO FINAL:', resultado);
+      return resultado;
+    } catch (e) {
+      console.error('[buscarTiposVeiculos] EXCEÇÃO:', e);
+      // Em caso de erro, pelo menos retorna o legado
+      if (legacyTipoVeiculo && legacyTipoVeiculo.trim()) {
+        return [legacyTipoVeiculo.trim()];
+      }
       return [];
     }
   },

@@ -27,9 +27,8 @@ function DashboardMotorista() {
 
   const load = useCallback(async () => {
     if (!motorista) return;
-    // Busca tipos de veículos cadastrados
-    const tipos = await VeiculosService.buscarTiposVeiculos(motorista.id);
-    const tiposFinais = tipos.length > 0 ? tipos : (motorista.tipo_veiculo ? [motorista.tipo_veiculo] : []);
+    // Busca TODOS os tipos: veiculos_motorista + campo legado motoristas.tipo_veiculo
+    const tiposFinais = await VeiculosService.buscarTiposVeiculos(motorista.id, motorista.tipo_veiculo);
     setTiposVeiculos(tiposFinais);
     const s = await FretesService.buscarEstatisticasMotorista(motorista.id, tiposFinais);
     setStats(s);
