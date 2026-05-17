@@ -8,7 +8,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  ScrollView, TouchableOpacity,
+  ScrollView, TouchableOpacity, Image
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +17,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { AuthService } from '@/services';
 import { Button, Input } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
+
+const LOGO_IMG = require('../../src/logo/WhatsApp_Image_2026-05-13_at_16.08.56_Nero_AI_Image_Upscaler_Photo_Face-removebg-preview.png');
 
 type UserType = 'motorista' | 'empresa';
 
@@ -102,7 +104,7 @@ export default function LoginScreen() {
             <Ionicons name="arrow-back" size={22} color="rgba(255,255,255,0.8)" />
           </TouchableOpacity>
           <View style={styles.logoBadge}>
-            <Text style={styles.logoText}>RJ</Text>
+            <Image source={LOGO_IMG} style={{ width: 44, height: 44 }} resizeMode="contain" />
           </View>
           <Text style={styles.title}>Bem-vindo de volta</Text>
           <Text style={styles.subtitle}>Faça login para continuar</Text>
@@ -218,11 +220,11 @@ const styles = StyleSheet.create({
   },
   logoBadge: {
     width: 52, height: 52, borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: '#ffffff',
     justifyContent: 'center', alignItems: 'center',
     marginBottom: SPACING.sm, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)',
+    overflow: 'hidden'
   },
-  logoText: { fontSize: 20, fontWeight: '900', color: '#fff', letterSpacing: 1 },
   title: { fontSize: 24, fontWeight: '800', color: '#fff', marginTop: 4 },
   subtitle: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
 

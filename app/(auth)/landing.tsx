@@ -190,7 +190,7 @@ export default function LandingScreen() {
         <View style={styles.footer}>
           <View style={styles.footerLogo}>
             <View style={styles.footerLogoBadge}>
-              <Text style={styles.footerLogoText}>RJ</Text>
+              <Image source={LOGO_IMG} style={{ width: 20, height: 20 }} resizeMode="contain" />
             </View>
             <Text style={styles.footerBrand}>ROTA JÁ</Text>
           </View>
@@ -347,10 +347,9 @@ const styles = StyleSheet.create({
   },
   footerLogo: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   footerLogoBadge: {
-    width: 28, height: 28, borderRadius: 8, backgroundColor: COLORS.primary,
-    justifyContent: 'center', alignItems: 'center',
+    width: 28, height: 28, borderRadius: 8, backgroundColor: '#ffffff',
+    justifyContent: 'center', alignItems: 'center', overflow: 'hidden'
   },
-  footerLogoText: { fontSize: 12, fontWeight: '900', color: '#fff' },
   footerBrand: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
   footerCopy: { fontSize: 12, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 18 },
 });
