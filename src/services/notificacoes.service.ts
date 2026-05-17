@@ -73,7 +73,8 @@ export const NotificacoesService = {
         titulo,
         mensagem,
         lida: false,
-        frete_id: freteId || null
+        frete_id: freteId || null,
+        tipo: 'sistema'
       });
       if (error) return { success: false, error: error.message };
       return { success: true };

@@ -9,6 +9,7 @@
  */
 import React, { useState } from 'react';
 import { View, TextInput, Text, StyleSheet, TextInputProps, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONT_SIZES, BORDER_RADIUS, SPACING } from '@/config/theme';
 
 interface Props extends TextInputProps {
@@ -47,7 +48,7 @@ export function Input({ label, error, icon, isPassword, required, style, ...prop
         />
         {isPassword && (
           <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(!showPassword)}>
-            <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁️'}</Text>
+            <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
       </View>
@@ -91,7 +92,6 @@ const styles = StyleSheet.create({
   },
   inputWithIcon: { paddingLeft: SPACING.sm },
   eyeBtn: { paddingRight: SPACING.md, padding: SPACING.sm },
-  eyeText: { fontSize: 18 },
   error: {
     color: COLORS.error,
     fontSize: FONT_SIZES.xs,

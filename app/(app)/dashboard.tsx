@@ -235,13 +235,24 @@ function DashboardEmpresa() {
     const result = await FretesService.cancelarFrete(selectedFreteId, motivo, mensagem);
 
     if (result.success) {
-      if (frete?.motorista_id) {
-        await NotificacoesService.enviar(
-          frete.motorista_id,
+      let driverUserId = frete?.motoristas?.user_id;
+
+      if (!driverUserId && frete?.motorista_id) {
+        try {
+          const { data } = await supabase.from('motoristas').select('user_id').eq('id', frete.motorista_id).single();
+          if (data) driverUserId = data.user_id;
+        } catch (e) { console.error('[handleCancelar] Erro ao buscar driverUserId fallback:', e); }
+      }
+
+      if (driverUserId) {
+        const textoMensagem = mensagem ? ` - Mensagem: ${mensagem}` : '';
+        const notif = await NotificacoesService.enviar(
+          driverUserId,
           'Frete cancelado pela empresa',
-          `A empresa ${empresa?.nome_empresa} cancelou o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}`,
+          `A empresa ${empresa?.nome_empresa} cancelou o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}${textoMensagem}`,
           selectedFreteId
         );
+        if (!notif.success) console.error('[handleCancelar] Erro ao notificar motorista:', notif.error);
       }
       Alert.alert('Sucesso', 'Frete cancelado com sucesso.');
       load();
@@ -402,7 +413,7 @@ function DashboardEmpresa() {
                       style={[styles.popoverItem, { borderBottomWidth: 0 }]}
                       onPress={() => { setActionMenuVisible(null); setSelectedFreteId(frete.id); setCancelModalVisible(true); }}
                     >
-                      <Text style={[styles.popoverText, { color: COLORS.error }]}>Excluir</Text>
+                      <Text style={[styles.popoverText, { color: COLORS.error }]}>Cancelar</Text>
                     </TouchableOpacity>
                   )}
                 </View>

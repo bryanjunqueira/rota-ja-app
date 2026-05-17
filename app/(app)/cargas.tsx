@@ -13,6 +13,7 @@ import { FretesService, NotificacoesService, VeiculosService } from '@/services'
 import { LoadingSpinner, CidadeEstadoSelect, Button, CancelModal } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '@/lib/supabase';
 
 
 
@@ -70,18 +71,30 @@ function CargasMotorista() {
     const frete = selectedFrete || minhasCargas.find(f => f.id === selectedFreteId);
     console.log('[handleDevolver] Tentando devolver frete:', selectedFreteId, 'User Empresa:', frete?.user_id);
     
+    let empresaUserId = frete?.user_id;
+    
+    // Fallback: se o user_id não estiver no objeto local, busca direto no banco
+    if (!empresaUserId) {
+      try {
+        const { data } = await supabase.from('fretes').select('user_id').eq('id', selectedFreteId).single();
+        if (data) empresaUserId = data.user_id;
+      } catch (e) { console.error('[handleDevolver] Erro ao buscar user_id fallback', e); }
+    }
+
     // Envia a notificação ANTES de devolver o frete. 
     // Isso evita que o RLS bloqueie a notificação caso o motorista perca a posse do frete no banco.
-    if (frete?.user_id) {
-      console.log('[handleDevolver] Enviando notificação prévia para:', frete.user_id);
-      await NotificacoesService.enviar(
-        frete.user_id,
+    if (empresaUserId) {
+      console.log('[handleDevolver] Enviando notificação prévia para:', empresaUserId);
+      const textoMensagem = mensagem ? ` - Mensagem: ${mensagem}` : '';
+      const notif = await NotificacoesService.enviar(
+        empresaUserId,
         'Carga devolvida pelo motorista',
-        `O motorista ${motorista?.nome_completo} devolveu o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}`,
+        `O motorista ${motorista?.nome_completo} devolveu o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}${textoMensagem}`,
         selectedFreteId
       );
+      if (!notif.success) console.error('[handleDevolver] Erro ao enviar notificação:', notif.error);
     } else {
-      console.warn('[handleDevolver] ALERTA: frete.user_id está indefinido. Não foi possível enviar notificação.');
+      console.warn('[handleDevolver] ALERTA: empresaUserId está indefinido. Não foi possível enviar notificação.');
     }
 
     // 2. Devolve o frete no banco
@@ -785,10 +798,11 @@ function CargasEmpresa({ userId }: { userId: string }) {
     if (result.success) {
       // Notifica o motorista se houver um vinculado
       if (frete?.motorista_id) {
+        const textoMensagem = mensagem ? ` - Mensagem: ${mensagem}` : '';
         await NotificacoesService.enviar(
           frete.motorista_id,
           'Frete cancelado pela empresa',
-          `A empresa ${empresa?.nome_empresa} cancelou o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}`,
+          `A empresa ${empresa?.nome_empresa} cancelou o frete #${selectedFreteId.slice(0, 8)}. Motivo: ${motivo}${textoMensagem}`,
           selectedFreteId
         );
       }
@@ -895,7 +909,7 @@ function CargasEmpresa({ userId }: { userId: string }) {
                       style={[styles.popoverItem, { borderBottomWidth: 0 }]}
                       onPress={() => { setActionMenuVisible(null); setSelectedFreteId(item.id); setCancelModalVisible(true); }}
                     >
-                      <Text style={[styles.popoverText, { color: COLORS.error }]}>Excluir</Text>
+                      <Text style={[styles.popoverText, { color: COLORS.error }]}>Cancelar</Text>
                     </TouchableOpacity>
                   )}
                 </View>

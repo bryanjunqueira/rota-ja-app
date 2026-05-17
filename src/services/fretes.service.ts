@@ -283,6 +283,8 @@ export const FretesService = {
         .select(`
           *,
           motoristas (
+            id,
+            user_id,
             nome_completo,
             celular,
             email,
@@ -390,9 +392,9 @@ export const FretesService = {
         .from('fretes')
         .update({ 
           status: 'cancelado_empresa', 
-          motivo_cancelamento: motivo,
-          mensagem_cancelamento: mensagem || null,
-          data_cancelamento: new Date().toISOString()
+          motivo_devolucao: motivo,
+          mensagem_devolucao: mensagem || null,
+          data_devolucao: new Date().toISOString()
         })
         .eq('id', freteId);
       
