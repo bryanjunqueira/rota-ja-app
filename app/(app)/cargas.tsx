@@ -241,9 +241,13 @@ function CargasMotorista() {
         ? veiculosCompativeis.has(freteVeiculo)
         : true;
 
-      return matchOrigem && matchDestino && isCompatible;
+      // Filtro de distância (valida distância da origem caso a propriedade exista no frete)
+      const freteDistancia = Number(frete.distancia) || Number(frete.distancia_origem) || Number(frete.distancia_total) || 0;
+      const matchDistancia = freteDistancia === 0 ? true : freteDistancia <= distanciaMaxima;
+
+      return matchOrigem && matchDestino && isCompatible && matchDistancia;
     });
-  }, [allCargas, filtroOrigem, filtroDestino, tiposVeiculos]);
+  }, [allCargas, filtroOrigem, filtroDestino, tiposVeiculos, distanciaMaxima]);
 
   const minhasCargasFiltradas = useMemo(() => {
     if (minhasCargasSubTab === 'todas') return minhasCargas;
@@ -817,7 +821,7 @@ function CargasEmpresa({ userId }: { userId: string }) {
   };
 
   const loadPublicFretes = async () => {
-    const { data } = await FretesService.buscarTodosFretes();
+    const { data } = await FretesService.buscarTodosFretes(true);
     setAllPublicFretes(data);
     setShowSearchModal(true);
   };
@@ -831,12 +835,15 @@ function CargasEmpresa({ userId }: { userId: string }) {
 
   const filteredPublic = useMemo(() => {
     if (!searchTerm) return allPublicFretes;
-    const s = searchTerm.toLowerCase();
+    
+    const normalizeStr = (str: string) => (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const s = normalizeStr(searchTerm);
+
     return allPublicFretes.filter(f => 
-      f.origem_cidade.toLowerCase().includes(s) ||
-      f.destino_cidade.toLowerCase().includes(s) ||
-      f.tipo_veiculo.toLowerCase().includes(s) ||
-      (f.empresas?.nome_empresa || '').toLowerCase().includes(s)
+      normalizeStr(f.origem_cidade).includes(s) ||
+      normalizeStr(f.destino_cidade).includes(s) ||
+      normalizeStr(f.tipo_veiculo).includes(s) ||
+      normalizeStr(f.empresas?.nome_empresa).includes(s)
     );
   }, [allPublicFretes, searchTerm]);
 

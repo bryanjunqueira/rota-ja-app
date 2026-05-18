@@ -9,13 +9,19 @@
  *  3. Depois do onboarding, nunca mais aparece (salvo reinstalação)
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { Platform } from 'react-native';
+import { Platform, LogBox } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as NavigationBar from 'expo-navigation-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
+
+// Ignore Supabase refresh token errors that trigger Expo toasts
+LogBox.ignoreLogs([
+  'AuthApiError: Invalid Refresh Token',
+  'AuthApiError: Refresh Token Not Found',
+]);
 
 const ONBOARDING_KEY = '@rotaja_onboarding_seen';
 

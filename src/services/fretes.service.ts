@@ -164,22 +164,21 @@ export const FretesService = {
    * Busca todos os fretes disponíveis (sem filtro de veículo)
    * com dados da empresa — GARANTE motorista_id IS NULL
    */
-  async buscarTodosFretes() {
+  async buscarTodosFretes(incluirTodos: boolean = false) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('fretes')
         .select(`
-          id, user_id, origem_cidade, origem_estado, destino_cidade, destino_estado,
-          valor_frete, peso, tipo_veiculo, data_coleta, prazo_entrega,
-          status, volume, dimensao, pedagogio_incluso,
-          endereco_retirada, numero_retirada, complemento_retirada, cep_retirada,
-          endereco_entrega, numero_entrega, complemento_entrega, cep_entrega,
-          data_aceite, data_inicio_transporte, data_entrega,
+          *,
           empresas ( nome_empresa, telefone, email, nome_responsavel )
         `)
-        .eq('status', 'disponivel')
-        .is('motorista_id', null)
         .order('created_at', { ascending: false });
+
+      if (!incluirTodos) {
+        query = query.eq('status', 'disponivel').is('motorista_id', null);
+      }
+
+      const { data, error } = await query;
       if (error) {
         console.error('[buscarTodosFretes] ERRO:', error);
         return { data: [], error: 'Erro ao carregar fretes.' };
@@ -205,12 +204,7 @@ export const FretesService = {
       let query = supabase
         .from('fretes')
         .select(`
-          id, user_id, origem_cidade, origem_estado, destino_cidade, destino_estado,
-          valor_frete, peso, tipo_veiculo, data_coleta, prazo_entrega,
-          status, volume, dimensao, pedagogio_incluso,
-          endereco_retirada, numero_retirada, complemento_retirada, cep_retirada,
-          endereco_entrega, numero_entrega, complemento_entrega, cep_entrega,
-          data_aceite, data_inicio_transporte, data_entrega,
+          *,
           empresas ( nome_empresa, telefone, email, nome_responsavel )
         `)
         .eq('status', 'disponivel')
