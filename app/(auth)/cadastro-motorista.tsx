@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { MotoristasService, VeiculosService } from '@/services';
+import { MotoristasService, VeiculosService, AssinaturasService } from '@/services';
 import { Button, Input } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
 
@@ -118,6 +118,9 @@ export default function CadastroMotoristaScreen() {
           tipoCarroceria: form.tipoCarroceria,
         });
       }
+
+      // 4. Criar trial automático na tabela de assinaturas
+      await AssinaturasService.criarTrialAutomatico(authResult.userId, 'motorista');
 
       Alert.alert('Cadastro realizado!', 'Verifique seu email para confirmar a conta.', [
         { text: 'OK', onPress: () => { refreshProfile(); router.replace('/(auth)/login'); } }

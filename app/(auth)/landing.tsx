@@ -72,7 +72,7 @@ export default function LandingScreen() {
               </View>
               <Text style={styles.headerWelcome}>Bem-vindo 👋</Text>
             </View>
-            <TouchableOpacity style={styles.crownBtn} activeOpacity={0.7} onPress={() => router.push('/planos')}>
+            <TouchableOpacity style={styles.crownBtn} activeOpacity={0.7} onPress={() => router.push('/(auth)/planos')}>
               <LinearGradient colors={['#FFD700', '#FFA500']} style={styles.crownCircle}>
                 <Ionicons name="ribbon" size={20} color="#fff" />
               </LinearGradient>
@@ -262,6 +262,7 @@ const styles = StyleSheet.create({
   profileCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', ...SHADOWS.sm },
   headerWelcome: { color: '#fff', fontSize: 14, fontWeight: '700' },
   crownCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', ...SHADOWS.md },
+  crownBtn: {},
 
   // Stats
   statsRow: {

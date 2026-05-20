@@ -2,6 +2,8 @@
  * Tela de Perfil — redesign premium mobile-first
  * Motorista: perfil read-only + gerenciamento de veículos
  * Empresa: dados editáveis da empresa
+ *
+ * Integrado com o sistema de planos (PremiumAvatar e SubscriptionCard).
  */
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
@@ -9,12 +11,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
+import { useSubscription } from '@/hooks/useSubscription';
 import { MotoristasService, EmpresasService, UploadService } from '@/services';
-import { Button, Input, VeiculosManager } from '@/components';
+import { Button, Input, VeiculosManager, PremiumAvatar, SubscriptionCard } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 
 export default function PerfilScreen() {
   const { user, role, motorista, empresa, logout, refreshProfile } = useAuth();
+  const { tier } = useSubscription();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -57,19 +61,36 @@ export default function PerfilScreen() {
   };
 
   if (role === 'motorista' && motorista) return (
-    <PerfilMotorista motorista={motorista} user={user} uploading={uploading} onLogout={handleLogout} onUpload={handleUploadFoto} />
+    <PerfilMotorista
+      motorista={motorista}
+      user={user}
+      tier={tier}
+      uploading={uploading}
+      onLogout={handleLogout}
+      onUpload={handleUploadFoto}
+    />
   );
 
   if (role === 'empresa' && empresa) return (
     <PerfilEmpresa
-      empresa={empresa} user={user} editing={editing} saving={saving}
-      onEdit={() => setEditing(true)} onLogout={handleLogout}
+      empresa={empresa}
+      user={user}
+      tier={tier}
+      editing={editing}
+      saving={saving}
+      onEdit={() => setEditing(true)}
+      onLogout={handleLogout}
       onSave={async (dados: Record<string, string>) => {
         setSaving(true);
         const result = await EmpresasService.atualizarPerfil(empresa.id, dados);
         setSaving(false);
-        if (result.success) { await refreshProfile(); setEditing(false); Alert.alert('Dados atualizados!'); }
-        else Alert.alert('Erro', result.error || 'Erro ao salvar.');
+        if (result.success) {
+          await refreshProfile();
+          setEditing(false);
+          Alert.alert('Dados atualizados!');
+        } else {
+          Alert.alert('Erro', result.error || 'Erro ao salvar.');
+        }
       }}
       onCancel={() => setEditing(false)}
     />
@@ -87,24 +108,23 @@ export default function PerfilScreen() {
 // ═══════════════════════════════════════
 // MOTORISTA — Redesign Premium
 // ═══════════════════════════════════════
-function PerfilMotorista({ motorista, user, uploading, onLogout, onUpload }: any) {
+function PerfilMotorista({ motorista, user, tier, uploading, onLogout, onUpload }: any) {
   const insets = useSafeAreaInsets();
   const status = motorista.status || 'pendente';
   const sc = getStatusColor(status);
-  const hasPhoto = !!motorista.foto_motorista_url;
 
   return (
     <ScrollView style={st.container} showsVerticalScrollIndicator={false}>
       {/* Gradient Header */}
       <LinearGradient colors={['#1565C0', '#1976D2', '#2094F3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[st.gradientHeader, { paddingTop: insets.top + 24 }]}>
         <TouchableOpacity onPress={onUpload} activeOpacity={0.8} style={st.avatarWrap}>
-          {hasPhoto ? (
-            <Image source={{ uri: motorista.foto_motorista_url }} style={st.avatarImg} />
-          ) : (
-            <View style={st.avatarPlaceholder}>
-              <Text style={st.avatarLetter}>{motorista.nome_completo?.charAt(0)?.toUpperCase()}</Text>
-            </View>
-          )}
+          <PremiumAvatar
+            tier={tier}
+            imageUrl={motorista.foto_motorista_url}
+            name={motorista.nome_completo}
+            size={92}
+            showBadge={true}
+          />
           {uploading ? (
             <View style={st.avatarLoading}><ActivityIndicator color="#fff" /></View>
           ) : (
@@ -120,6 +140,17 @@ function PerfilMotorista({ motorista, user, uploading, onLogout, onUpload }: any
       </LinearGradient>
 
       <View style={st.body}>
+        {/* Assinatura e Planos */}
+        <View style={st.card}>
+          <View style={st.cardTitleWrap}>
+            <View style={[st.cardTitleIcon, { backgroundColor: COLORS.primaryFaded }]}>
+              <Ionicons name="card-outline" size={18} color={COLORS.primary} />
+            </View>
+            <Text style={st.cardTitleText}>Assinatura & Plano</Text>
+          </View>
+          <SubscriptionCard />
+        </View>
+
         {/* Informações Pessoais — Read Only com cadeado */}
         <View style={st.card}>
           <View style={st.cardTitleWrap}>
@@ -183,7 +214,7 @@ function PerfilMotorista({ motorista, user, uploading, onLogout, onUpload }: any
 // ═══════════════════════════════════════
 // EMPRESA
 // ═══════════════════════════════════════
-function PerfilEmpresa({ empresa, user, editing, saving, onEdit, onLogout, onSave, onCancel }: any) {
+function PerfilEmpresa({ empresa, user, tier, editing, saving, onEdit, onLogout, onSave, onCancel }: any) {
   const insets = useSafeAreaInsets();
   const [form, setForm] = useState({
     telefone: empresa.telefone || '', endereco: empresa.endereco || '', cep: empresa.cep || '',
@@ -197,9 +228,12 @@ function PerfilEmpresa({ empresa, user, editing, saving, onEdit, onLogout, onSav
     <ScrollView style={st.container} showsVerticalScrollIndicator={false}>
       <LinearGradient colors={['#E89D1E', '#F9A825', '#FBC02D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[st.gradientHeader, { paddingTop: insets.top + 24 }]}>
         <View style={st.avatarWrap}>
-          <View style={[st.avatarPlaceholder, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-            <Text style={st.avatarLetter}>{empresa.nome_empresa?.charAt(0)?.toUpperCase()}</Text>
-          </View>
+          <PremiumAvatar
+            tier={tier}
+            name={empresa.nome_empresa}
+            size={92}
+            showBadge={true}
+          />
         </View>
         <Text style={st.heroName}>{empresa.nome_empresa}</Text>
         <Text style={st.heroSub}>{empresa.cnpj}</Text>
@@ -210,11 +244,22 @@ function PerfilEmpresa({ empresa, user, editing, saving, onEdit, onLogout, onSav
       </LinearGradient>
 
       <View style={st.body}>
+        {/* Assinatura e Planos */}
+        <View style={st.card}>
+          <View style={st.cardTitleWrap}>
+            <View style={[st.cardTitleIcon, { backgroundColor: COLORS.primaryFaded }]}>
+              <Ionicons name="card-outline" size={18} color={COLORS.primary} />
+            </View>
+            <Text style={st.cardTitleText}>Assinatura & Plano</Text>
+          </View>
+          <SubscriptionCard />
+        </View>
+
         {editing ? (
           <View style={st.card}>
             <View style={st.cardTitleWrap}>
-              <View style={[st.cardTitleIcon, { backgroundColor: COLORS.secondary + '15' }]}>
-                <Ionicons name="create-outline" size={18} color={COLORS.secondary} />
+              <View style={[st.cardTitleIcon, { backgroundColor: COLORS.accent + '15' }]}>
+                <Ionicons name="create-outline" size={18} color={COLORS.accent} />
               </View>
               <Text style={st.cardTitleText}>Editar Perfil</Text>
             </View>
@@ -235,7 +280,7 @@ function PerfilEmpresa({ empresa, user, editing, saving, onEdit, onLogout, onSav
           <>
             <View style={st.card}>
               <View style={st.cardTitleWrap}>
-                <View style={[st.cardTitleIcon, { backgroundColor: COLORS.secondary + '15' }]}><Ionicons name="business-outline" size={18} color={COLORS.secondary} /></View>
+                <View style={[st.cardTitleIcon, { backgroundColor: COLORS.accent + '15' }]}><Ionicons name="business-outline" size={18} color={COLORS.accent} /></View>
                 <Text style={st.cardTitleText}>Dados Corporativos</Text>
               </View>
               <InfoRow icon="mail-outline" label="E-mail de Contato" value={user?.email} />
@@ -245,7 +290,7 @@ function PerfilEmpresa({ empresa, user, editing, saving, onEdit, onLogout, onSav
 
             <View style={st.card}>
               <View style={st.cardTitleWrap}>
-                <View style={[st.cardTitleIcon, { backgroundColor: COLORS.secondary + '15' }]}><Ionicons name="location-outline" size={18} color={COLORS.secondary} /></View>
+                <View style={[st.cardTitleIcon, { backgroundColor: COLORS.accent + '15' }]}><Ionicons name="location-outline" size={18} color={COLORS.accent} /></View>
                 <Text style={st.cardTitleText}>Localização</Text>
               </View>
               <InfoRow icon="home-outline" label="Endereço" value={empresa.endereco} />

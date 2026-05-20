@@ -9,6 +9,7 @@ import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useGlobalSearchParams } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
+import { useSubscription } from '@/hooks/useSubscription';
 import { FretesService, NotificacoesService, VeiculosService } from '@/services';
 import { LoadingSpinner, CidadeEstadoSelect, Button, CancelModal } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
@@ -36,6 +37,8 @@ export default function CargasScreen() {
 
 function CargasMotorista() {
   const { motorista } = useAuth();
+  const { permissions, tier, plan } = useSubscription();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [allCargas, setAllCargas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,13 +146,14 @@ function CargasMotorista() {
     console.log('[CargasMotorista] Tipos de veículos encontrados:', tipos);
     setTiposVeiculos(tipos);
 
+    // Sempre buscar minhasCargas para calcular corretamente o consumo do limite
+    const histResult = await FretesService.buscarHistoricoMotorista(motorista.id);
+    setMinhasCargas(histResult.data || []);
+
     if (viewMode === 'disponiveis') {
       const result = await FretesService.buscarTodosFretes();
       console.log('[CargasMotorista] Cargas disponíveis no banco:', result.data.length);
       setAllCargas(result.data);
-    } else {
-      const result = await FretesService.buscarHistoricoMotorista(motorista.id);
-      setMinhasCargas(result.data);
     }
     setLoading(false);
   }, [motorista?.id, motorista?.tipo_veiculo, viewMode]);
@@ -162,6 +166,16 @@ function CargasMotorista() {
 
   const handleAceitar = async (frete: any) => {
     if (!motorista) return;
+
+    // Validar limite do plano antes de aceitar
+    if (!permissions.hasUnlimitedFreights && currentLimit <= 0) {
+      Alert.alert(
+        'Limite do Plano Atingido',
+        `Você já atingiu o limite de ${permissions.maxFreightsAvailable} fretes do seu ${planName}. Faça o upgrade para aceitar novas cargas!`
+      );
+      return;
+    }
+
     Alert.alert('Coletar Frete', 'Deseja aceitar e coletar esta carga?', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Coletar', onPress: async () => {
@@ -190,6 +204,7 @@ function CargasMotorista() {
   };
 
   const handleUpdateStatus = async (frete: any, status: 'em_transporte' | 'entregue') => {
+    if (!motorista) return;
     const action = status === 'em_transporte' ? 'iniciar o transporte' : 'finalizar a entrega';
     Alert.alert('Confirmar', `Deseja ${action} desta carga?`, [
       { text: 'Cancelar', style: 'cancel' },
@@ -257,6 +272,48 @@ function CargasMotorista() {
     return minhasCargas;
   }, [minhasCargas, minhasCargasSubTab]);
 
+  // ═══════════════════════════════════════════════════
+  // LÓGICA DE LIMITES UNIFICADA E CORRIGIDA
+  // ═══════════════════════════════════════════════════
+  // Para TODOS os planos (Gratuito, Bronze, Prata):
+  // maxFreightsAvailable é o cap total de fretes.
+  // - Gratuito: cap LIFETIME (subtrai histórico completo incluindo finalizados).
+  // - Bronze / Prata: cap SIMULTÂNEO/ATIVO (subtrai apenas fretes ativos: aceito ou em transporte). Cargas entregues NÃO contam.
+  // ═══════════════════════════════════════════════════
+
+  const isGratuito = tier === 'gratuito';
+
+  // Quantos fretes o motorista já consumiu/aceitou
+  const fretesUsados = useMemo(() => {
+    if (isGratuito) {
+      // Plano gratuito: cap lifetime (todas as cargas do histórico contam, inclusive finalizadas/entregues)
+      return minhasCargas.length;
+    }
+    // Planos pagos (Bronze, Prata): cap simultâneo/ativo (apenas cargas em andamento/aceitas contam)
+    return minhasCargas.filter(c => c.status === 'aceito' || c.status === 'em_transporte').length;
+  }, [minhasCargas, isGratuito]);
+
+  // Limite de cargas a MOSTRAR na aba "Disponíveis"
+  const currentLimit = useMemo(() => {
+    if (permissions.hasUnlimitedFreights) return 999999;
+    return Math.max(0, permissions.maxFreightsAvailable - fretesUsados);
+  }, [permissions.maxFreightsAvailable, permissions.hasUnlimitedFreights, fretesUsados]);
+
+  // A lista de fretes EFETIVAMENTE exibida (recortada pelo limite)
+  const chargesToShow = useMemo(() => {
+    if (viewMode === 'disponiveis' && !permissions.hasUnlimitedFreights) {
+      return cargasFiltradas.slice(0, currentLimit);
+    }
+    return cargasFiltradas;
+  }, [cargasFiltradas, viewMode, permissions.hasUnlimitedFreights, currentLimit]);
+
+  const planName = useMemo(() => {
+    return plan?.name || (tier === 'gratuito' ? 'Plano Gratuito' : `Plano ${tier.charAt(0).toUpperCase() + tier.slice(1)}`);
+  }, [plan, tier]);
+
+  // O motorista atingiu o limite do plano?
+  const limitReached = !permissions.hasUnlimitedFreights && currentLimit === 0;
+
   if (motorista?.status !== 'aprovado') {
     return (
       <View style={styles.blockedContainer}>
@@ -288,7 +345,7 @@ function CargasMotorista() {
       </View>
 
       <FlatList
-        data={viewMode === 'disponiveis' ? cargasFiltradas : minhasCargasFiltradas}
+        data={viewMode === 'disponiveis' ? chargesToShow : minhasCargasFiltradas}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
@@ -392,16 +449,26 @@ function CargasMotorista() {
           )
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="cube-outline" size={40} color={COLORS.textTertiary} />
-            <Text style={styles.emptyTitle}>Nenhuma carga encontrada</Text>
-            <Text style={styles.emptyText}>
-              {allCargas.length === 0
-                ? `Nenhuma carga disponível para ${motorista?.tipo_veiculo} no momento.`
-                : 'Nenhuma carga encontrada com os filtros aplicados.'
-              }
-            </Text>
-          </View>
+          viewMode === 'disponiveis' && limitReached ? (
+            <View style={styles.empty}>
+              <Ionicons name="sad-outline" size={48} color="#D97706" style={{ marginBottom: 12 }} />
+              <Text style={styles.emptyTitle}>Limite Excedido!</Text>
+              <Text style={styles.emptyText}>
+                Você utilizou o limite total de {permissions.maxFreightsAvailable} fretes do seu {planName}. Faça o upgrade para continuar visualizando e aceitando novas cargas!
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.empty}>
+              <Ionicons name="cube-outline" size={40} color={COLORS.textTertiary} />
+              <Text style={styles.emptyTitle}>Nenhuma carga encontrada</Text>
+              <Text style={styles.emptyText}>
+                {allCargas.length === 0
+                  ? `Nenhuma carga disponível para ${motorista?.tipo_veiculo} no momento.`
+                  : 'Nenhuma carga encontrada com os filtros aplicados.'
+                }
+              </Text>
+            </View>
+          )
         }
         renderItem={({ item }) => (
           <View style={[styles.card, { position: 'relative', zIndex: actionMenuVisible === item.id ? 100 : 1 }]}>
@@ -543,6 +610,33 @@ function CargasMotorista() {
           </View>
         )}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
+        ListFooterComponent={
+          viewMode === 'disponiveis' && !permissions.hasUnlimitedFreights ? (
+            <View style={styles.trialLimitCard}>
+              <View style={styles.trialLimitHeader}>
+                <Ionicons name="information-circle-outline" size={28} color="#3B82F6" />
+                <Text style={styles.trialLimitTitle}>Informação do Plano</Text>
+              </View>
+              <Text style={styles.trialLimitText}>
+                No {planName} você tem um limite de {permissions.maxFreightsAvailable} fretes.
+              </Text>
+              <Text style={styles.trialLimitTextSecundario}>
+                {fretesUsados > 0
+                  ? `Você já aceitou ${fretesUsados} de ${permissions.maxFreightsAvailable} frete${permissions.maxFreightsAvailable !== 1 ? 's' : ''}. ${currentLimit > 0 ? `Restam ${currentLimit} disponíveis para visualizar e aceitar.` : 'Limite atingido!'} Faça o upgrade para acesso ilimitado!`
+                  : `Você ainda não aceitou nenhum frete. Restam ${currentLimit} disponíveis para visualizar e aceitar. Faça o upgrade para desbloquear cargas ilimitadas!`
+                }
+              </Text>
+              <TouchableOpacity
+                style={styles.trialUpgradeBtn}
+                onPress={() => router.push('/planos')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.trialUpgradeBtnText}>Ver Planos Premium</Text>
+                <Ionicons name="arrow-forward" size={16} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+          ) : null
+        }
       />
 
       {/* ActionMenu foi removido e substituído pela janelinha inline no FlatList */}
@@ -1453,5 +1547,60 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.textPrimary,
+  },
+  trialLimitCard: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 16,
+    marginBottom: 30,
+    alignItems: 'center',
+    ...SHADOWS.sm,
+  },
+  trialLimitHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  trialLimitTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#92400E',
+    flex: 1,
+  },
+  trialLimitText: {
+    fontSize: 14,
+    color: '#B45309',
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 8,
+    fontWeight: '700',
+  },
+  trialLimitTextSecundario: {
+    fontSize: 13,
+    color: '#78350F',
+    lineHeight: 18,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  trialUpgradeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#D97706',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    width: '100%',
+    ...SHADOWS.sm,
+  },
+  trialUpgradeBtnText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

@@ -6,7 +6,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { EmpresasService } from '@/services';
+import { EmpresasService, AssinaturasService } from '@/services';
 import { Button, Input } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
 
@@ -86,6 +86,9 @@ export default function CadastroEmpresaScreen() {
     setLoading(false);
 
     if (empResult.success) {
+      // Criar trial automático na tabela de assinaturas
+      await AssinaturasService.criarTrialAutomatico(authResult.userId, 'empresa');
+
       Alert.alert('Cadastro realizado!', 'Verifique seu email para confirmar a conta. Sua empresa será analisada pela equipe.', [
         { text: 'OK', onPress: () => { refreshProfile(); router.replace('/(auth)/login'); } }
       ]);

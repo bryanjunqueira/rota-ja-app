@@ -9,15 +9,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/hooks/useAuth';
 import { FretesService, NotificacoesService, VeiculosService } from '@/services';
-import { LoadingSpinner, Badge, CancelModal } from '@/components';
+import { LoadingSpinner, Badge, CancelModal, PremiumBadge } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSubscription } from '@/hooks/useSubscription';
+import { supabase } from '@/lib/supabase';
 
 // ─── DASHBOARD MOTORISTA ───
 
 function DashboardMotorista() {
   const { motorista } = useAuth();
+  const { tier } = useSubscription();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [stats, setStats] = useState({ cargasDisponiveis: 0, cargasAceitas: 0, cargasEmTransporte: 0, cargasTransportadas: 0 });
@@ -31,7 +34,12 @@ function DashboardMotorista() {
     const tiposFinais = await VeiculosService.buscarTiposVeiculos(motorista.id, motorista.tipo_veiculo);
     setTiposVeiculos(tiposFinais);
     const s = await FretesService.buscarEstatisticasMotorista(motorista.id, tiposFinais);
-    setStats(s);
+    setStats({
+      cargasDisponiveis: s.cargasDisponiveis || 0,
+      cargasAceitas: s.cargasAceitas || 0,
+      cargasEmTransporte: s.cargasEmTransporte || 0,
+      cargasTransportadas: s.cargasTransportadas || 0,
+    });
     setLoading(false);
   }, [motorista]);
 
@@ -50,7 +58,10 @@ function DashboardMotorista() {
       <LinearGradient colors={['#1565C0', '#1976D2', '#2094F3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.heroHeader, { paddingTop: insets.top + 30 }]}>
         <View style={styles.heroTop}>
           <View>
-            <Text style={styles.heroGreeting}>Olá, {motorista.nome_completo.split(' ')[0]} 👋</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.heroGreeting}>Olá, {motorista.nome_completo.split(' ')[0]} 👋</Text>
+              <PremiumBadge tier={tier} size="sm" showLabel={false} />
+            </View>
             <Text style={styles.heroSub}>Painel do Motorista</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -59,9 +70,13 @@ function DashboardMotorista() {
               <Text style={[styles.heroBadgeText, { color: statusInfo.text }]}>{getStatusLabel(status)}</Text>
             </View>
             <TouchableOpacity onPress={() => router.push('/(auth)/planos')} activeOpacity={0.7}>
-              <LinearGradient colors={['#FFD700', '#FFA500']} style={styles.crownCircleSmall}>
-                <Ionicons name="ribbon" size={16} color="#fff" />
-              </LinearGradient>
+              {tier === 'gratuito' ? (
+                <LinearGradient colors={['#FFD700', '#FFA500']} style={styles.crownCircleSmall}>
+                  <Ionicons name="ribbon" size={16} color="#fff" />
+                </LinearGradient>
+              ) : (
+                <PremiumBadge tier={tier} size="sm" showLabel={true} />
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -187,6 +202,7 @@ function DashboardMotorista() {
 
 function DashboardEmpresa() {
   const { user, empresa } = useAuth();
+  const { tier } = useSubscription();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [fretes, setFretes] = useState<any[]>([]);
@@ -310,14 +326,18 @@ function DashboardEmpresa() {
     <ScrollView style={styles.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}>
       {/* Saudação empresa + botão novo frete */}
       <View style={[styles.greetingRow, { paddingTop: insets.top + 30 }]}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <Text style={styles.greetingTitle}>{empresa.nome_empresa}</Text>
-          <Text style={styles.greetingSubtitle}>Painel da Empresa</Text>
+          <PremiumBadge tier={tier} size="sm" showLabel={false} />
         </View>
         <TouchableOpacity onPress={() => router.push('/(auth)/planos')} activeOpacity={0.7} style={{ marginRight: 12 }}>
-          <LinearGradient colors={['#FFD700', '#FFA500']} style={styles.crownCircleSmall}>
-            <Ionicons name="ribbon" size={16} color="#fff" />
-          </LinearGradient>
+          {tier === 'gratuito' ? (
+            <LinearGradient colors={['#FFD700', '#FFA500']} style={styles.crownCircleSmall}>
+              <Ionicons name="ribbon" size={16} color="#fff" />
+            </LinearGradient>
+          ) : (
+            <PremiumBadge tier={tier} size="sm" showLabel={true} />
+          )}
         </TouchableOpacity>
         <TouchableOpacity style={styles.novoFreteBtn} onPress={() => router.push('/novo-frete')} activeOpacity={0.7}>
           <Ionicons name="add-circle" size={18} color={COLORS.white} />

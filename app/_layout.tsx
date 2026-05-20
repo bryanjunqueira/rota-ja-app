@@ -16,6 +16,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as NavigationBar from 'expo-navigation-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { SubscriptionProvider, useSubscription } from '@/hooks/useSubscription';
 
 // Ignore Supabase refresh token errors that trigger Expo toasts
 LogBox.ignoreLogs([
@@ -35,6 +36,7 @@ if (Platform.OS === 'android') {
 
 function RootNavigationGuard() {
   const { user, loading, role } = useAuth();
+  const { needsUpgrade, loading: subLoading } = useSubscription();
   const segments = useSegments();
   const router = useRouter();
 
@@ -70,12 +72,14 @@ function RootNavigationGuard() {
   }, [segments]);
 
   useEffect(() => {
-    // Esperar ambos: auth carregou E onboarding checado
-    if (loading || onboardingSeen === null) return;
+    // Esperar todos: auth carregou, onboarding checado, e assinatura carregada
+    if (loading || onboardingSeen === null || subLoading) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const isOnboarding = segments[1] === 'onboarding';
-    const isPublicAuthRoute = segments[1] === 'planos' || segments[1] === 'checkout';
+    const segs = segments as string[];
+    const inAuthGroup = segs[0] === '(auth)';
+    const isOnboarding = segs[1] === 'onboarding';
+    const isPublicAuthRoute = segs[1] === 'planos' || segs[1] === 'checkout';
+    const inAppGroup = segs[0] === '(app)';
 
     // ── REGRA 1: Primeiro acesso → Onboarding (independente de login!)
     if (!onboardingSeen && !isOnboarding) {
@@ -87,7 +91,11 @@ function RootNavigationGuard() {
     if (onboardingSeen && isOnboarding) {
       if (user) {
         if (role === 'motorista' || role === 'empresa') {
-          router.replace('/(app)/dashboard');
+          if (needsUpgrade) {
+            router.replace('/(auth)/planos');
+          } else {
+            router.replace('/(app)/dashboard');
+          }
         } else {
           router.replace('/(auth)/selecionar-perfil');
         }
@@ -103,13 +111,20 @@ function RootNavigationGuard() {
         router.replace('/(auth)/landing');
       } else if (user && inAuthGroup && !isPublicAuthRoute) {
         if (role === 'motorista' || role === 'empresa') {
-          router.replace('/(app)/dashboard');
+          if (needsUpgrade) {
+            router.replace('/(auth)/planos');
+          } else {
+            router.replace('/(app)/dashboard');
+          }
         } else if (role === null && !loading) {
           router.replace('/(auth)/selecionar-perfil');
         }
+      } else if (user && inAppGroup && needsUpgrade) {
+        // Redireciona para planos se a assinatura expirou e ele tentar navegar no app
+        router.replace('/(auth)/planos');
       }
     }
-  }, [user, loading, role, segments, onboardingSeen]);
+  }, [user, loading, role, segments, onboardingSeen, needsUpgrade, subLoading]);
 
   // Reforça ocultação da barra do Android ao mudar de rota
   useEffect(() => {
@@ -120,10 +135,10 @@ function RootNavigationGuard() {
   }, [segments]);
 
   useEffect(() => {
-    if (!loading && onboardingSeen !== null) {
+    if (!loading && onboardingSeen !== null && !subLoading) {
       SplashScreen.hideAsync();
     }
-  }, [loading, onboardingSeen]);
+  }, [loading, onboardingSeen, subLoading]);
 
   return (
     <>
@@ -133,10 +148,21 @@ function RootNavigationGuard() {
   );
 }
 
+function SubscriptionWrapper({ children }: { children: React.ReactNode }) {
+  const { user, role } = useAuth();
+  return (
+    <SubscriptionProvider userId={user?.id ?? null} userGroup={role}>
+      {children}
+    </SubscriptionProvider>
+  );
+}
+
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootNavigationGuard />
+      <SubscriptionWrapper>
+        <RootNavigationGuard />
+      </SubscriptionWrapper>
     </AuthProvider>
   );
 }

@@ -7,7 +7,7 @@
  * - Label acima do campo
  * - Mensagem de erro abaixo
  */
-import React, { useState } from 'react';
+import React, { useState, forwardRef } from 'react';
 import { View, TextInput, Text, StyleSheet, TextInputProps, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONT_SIZES, BORDER_RADIUS, SPACING } from '@/config/theme';
@@ -20,42 +20,45 @@ interface Props extends TextInputProps {
   required?: boolean;
 }
 
-export function Input({ label, error, icon, isPassword, required, style, ...props }: Props) {
-  const [showPassword, setShowPassword] = useState(false);
-  const [focused, setFocused] = useState(false);
+export const Input = forwardRef<TextInput, Props>(
+  ({ label, error, icon, isPassword, required, style, ...props }, ref) => {
+    const [showPassword, setShowPassword] = useState(false);
+    const [focused, setFocused] = useState(false);
 
-  return (
-    <View style={styles.container}>
-      {label && (
-        <Text style={styles.label}>
-          {label}{required ? <Text style={styles.required}> *</Text> : null}
-        </Text>
-      )}
-      <View style={[
-        styles.inputContainer,
-        focused && styles.inputFocused,
-        error && styles.inputError,
-      ]}>
-        {icon && <View style={styles.icon}>{icon}</View>}
-        <TextInput
-          style={[styles.input, icon ? styles.inputWithIcon : undefined, style]}
-          placeholderTextColor={COLORS.textTertiary}
-          secureTextEntry={isPassword && !showPassword}
-          autoCapitalize="none"
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          {...props}
-        />
-        {isPassword && (
-          <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(!showPassword)}>
-            <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={COLORS.textSecondary} />
-          </TouchableOpacity>
+    return (
+      <View style={styles.container}>
+        {label && (
+          <Text style={styles.label}>
+            {label}{required ? <Text style={styles.required}> *</Text> : null}
+          </Text>
         )}
+        <View style={[
+          styles.inputContainer,
+          focused && styles.inputFocused,
+          error && styles.inputError,
+        ]}>
+          {icon && <View style={styles.icon}>{icon}</View>}
+          <TextInput
+            ref={ref}
+            style={[styles.input, icon ? styles.inputWithIcon : undefined, style]}
+            placeholderTextColor={COLORS.textTertiary}
+            secureTextEntry={isPassword && !showPassword}
+            autoCapitalize="none"
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            {...props}
+          />
+          {isPassword && (
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(!showPassword)}>
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+        {error && <Text style={styles.error}>{error}</Text>}
       </View>
-      {error && <Text style={styles.error}>{error}</Text>}
-    </View>
-  );
-}
+    );
+  }
+);
 
 const styles = StyleSheet.create({
   container: { marginBottom: SPACING.md },

@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { AuthService } from '@/services/auth.service';
 import { MotoristasService, MotoristaData } from '@/services/motoristas.service';
 import { EmpresasService, EmpresaData } from '@/services/empresas.service';
+import { AssinaturasService } from '@/services/assinaturas.service';
 
 type UserRole = 'motorista' | 'empresa' | null;
 
@@ -40,6 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRole('motorista');
       setMotorista(motData);
       setEmpresa(null);
+      // Garantir trial automático criado
+      await AssinaturasService.criarTrialAutomatico(userId, 'motorista');
       return;
     }
     const { data: empData } = await EmpresasService.buscarPorUserId(userId);
@@ -47,6 +50,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRole('empresa');
       setEmpresa(empData);
       setMotorista(null);
+      // Garantir trial automático criado
+      await AssinaturasService.criarTrialAutomatico(userId, 'empresa');
       return;
     }
     setRole(null);

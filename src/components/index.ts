@@ -7,3 +7,8 @@ export { CidadeEstadoSelect } from './CidadeEstadoSelect';
 export { CancelModal } from './CancelModal';
 export { ActionMenu } from './ActionMenu';
 export { VeiculosManager } from './VeiculosManager';
+export { PremiumBadge } from './PremiumBadge';
+export { PremiumAvatar } from './PremiumAvatar';
+export { SubscriptionCard } from './SubscriptionCard';
+export { PaywallModal } from './PaywallModal';
+
