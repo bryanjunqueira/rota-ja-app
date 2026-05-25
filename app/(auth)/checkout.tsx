@@ -5,7 +5,7 @@
  * Painel sandbox para simular cenários de pagamento.
  * Ao aprovar: atualiza Supabase, navega pro dashboard.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Modal, Linking,
@@ -31,12 +31,14 @@ import {
 import { PremiumBadge } from '@/components/PremiumBadge';
 import type { SandboxScenario } from '@/services/assinaturas.service';
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export default function CheckoutScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { refreshSubscription } = useSubscription();
-  const params = useLocalSearchParams<{ planId: string; tier: string; group: string }>();
+  const params = useLocalSearchParams<{ planId: string; tier: string; group: string; stripeStatus?: string }>();
 
   const tier = (params.tier || 'bronze') as PlanTier;
   const group = (params.group || 'motorista') as UserGroup;
@@ -47,6 +49,7 @@ export default function CheckoutScreen() {
   const [processing, setProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showSandbox, setShowSandbox] = useState(false);
+  const [stripeReturnHandled, setStripeReturnHandled] = useState(false);
 
   // Cartão form (sandbox — aceita qualquer dado)
   const [cardNumber, setCardNumber] = useState('');
@@ -54,17 +57,100 @@ export default function CheckoutScreen() {
   const [cardCVV, setCardCVV] = useState('');
   const [cardName, setCardName] = useState('');
 
+  const paymentMethods = ENV.PAYMENTS_MODE === 'stripe'
+    ? [
+        { key: 'cartao' as PaymentMethod, icon: 'card-outline', label: 'Cartão' },
+        { key: 'boleto' as PaymentMethod, icon: 'barcode-outline', label: 'Boleto' },
+      ]
+    : [
+        { key: 'cartao' as PaymentMethod, icon: 'card-outline', label: 'Cartão' },
+        { key: 'pix' as PaymentMethod, icon: 'qr-code-outline', label: 'PIX' },
+        { key: 'boleto' as PaymentMethod, icon: 'barcode-outline', label: 'Boleto' },
+      ];
+
+  useEffect(() => {
+    if (ENV.PAYMENTS_MODE === 'stripe' && paymentMethod === 'pix') {
+      setPaymentMethod('cartao');
+    }
+  }, [paymentMethod]);
+
+  useEffect(() => {
+    if (ENV.PAYMENTS_MODE !== 'stripe' || stripeReturnHandled || !params.stripeStatus || !user?.id) {
+      return;
+    }
+
+    setStripeReturnHandled(true);
+
+    if (params.stripeStatus === 'cancel') {
+      Alert.alert('Pagamento cancelado', 'Voce voltou sem finalizar a assinatura.');
+      return;
+    }
+
+    if (params.stripeStatus !== 'success') return;
+
+    let active = true;
+
+    (async () => {
+      setProcessing(true);
+      let activated = false;
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const result = await AssinaturasService.verificarStatus(user.id);
+        await refreshSubscription();
+
+        if (result.data?.status_assinatura === 'ativo' && result.data?.tipo_plano === tier) {
+          activated = true;
+          break;
+        }
+
+        await sleep(1500);
+      }
+
+      if (!active) return;
+      setProcessing(false);
+
+      if (activated) {
+        setShowSuccess(true);
+        setTimeout(() => {
+          setShowSuccess(false);
+          router.replace('/(app)/dashboard');
+        }, 2500);
+      } else {
+        Alert.alert(
+          'Aguardando confirmacao',
+          'O pagamento foi iniciado na Stripe. Assim que o webhook confirmar, seu plano sera ativado automaticamente.'
+        );
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [params.stripeStatus, refreshSubscription, router, stripeReturnHandled, tier, user?.id]);
+
   const handlePay = async (scenario: SandboxScenario = 'aprovado') => {
     if (!user?.id) return;
     setProcessing(true);
 
     try {
       if (ENV.PAYMENTS_MODE === 'stripe' && scenario === 'aprovado') {
-        const metodoLabel =
-          paymentMethod === 'pix' ? 'PIX' : paymentMethod === 'boleto' ? 'Boleto' : 'Cartão';
+        if (paymentMethod === 'pix') {
+          Alert.alert(
+            'PIX indisponivel',
+            'A Stripe nao aceita PIX para assinatura mensal recorrente. Escolha cartao ou boleto.'
+          );
+          setPaymentMethod('cartao');
+          return;
+        }
+
+        const metodoLabel = paymentMethod === 'boleto' ? 'Boleto' : 'Cartão';
+        const returnParams =
+          `planId=${encodeURIComponent(plan.id)}` +
+          `&tier=${encodeURIComponent(tier)}` +
+          `&group=${encodeURIComponent(group)}`;
         const stripe = await StripeCheckoutService.criarSessaoCheckout(tier, group, {
-          successUrl: 'rotaja://checkout/success',
-          cancelUrl: 'rotaja://checkout/cancel',
+          successUrl: `rotaja://checkout?stripeStatus=success&${returnParams}`,
+          cancelUrl: `rotaja://checkout?stripeStatus=cancel&${returnParams}`,
           metodoPagamento: paymentMethod,
           amountCents: plan.price,
         });
@@ -195,11 +281,7 @@ export default function CheckoutScreen() {
         {/* Métodos de Pagamento */}
         <Text style={styles.sectionTitle}>Forma de Pagamento</Text>
         <View style={styles.methodsContainer}>
-          {([
-            { key: 'cartao' as PaymentMethod, icon: 'card-outline', label: 'Cartão' },
-            { key: 'pix' as PaymentMethod, icon: 'qr-code-outline', label: 'PIX' },
-            { key: 'boleto' as PaymentMethod, icon: 'barcode-outline', label: 'Boleto' },
-          ]).map((m) => (
+          {paymentMethods.map((m) => (
             <TouchableOpacity
               key={m.key}
               style={[styles.methodCard, paymentMethod === m.key && styles.methodActive]}

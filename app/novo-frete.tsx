@@ -28,8 +28,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { useSubscription } from '@/hooks/useSubscription';
 import { FretesService, CriarFreteData } from '@/services/fretes.service';
-import { isEmpresaGratuitoLifetimeLimit, TRIAL_DURATION_DAYS } from '@/config/plans';
-import { Button, Input } from '@/components';
+import { TRIAL_DURATION_DAYS } from '@/config/plans';
+import { Button, Input, PaywallModal } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
 
 const TIPOS_VEICULOS = [
@@ -58,6 +58,10 @@ export default function NovoFreteScreen() {
     limite: number;
     modo?: string;
   } | null>(null);
+  const [limitPaywall, setLimitPaywall] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
 
   const loadPublishLimit = useCallback(async () => {
     if (!user?.id) return;
@@ -70,6 +74,13 @@ export default function NovoFreteScreen() {
   useEffect(() => {
     loadPublishLimit();
   }, [loadPublishLimit, tier, status]);
+
+  const limitLabel = useMemo(() => {
+    if (permissions.hasUnlimitedFreights) return 'Plano Ouro: publicacoes ilimitadas.';
+    if (!publishLimit) return null;
+    const periodo = publishLimit.modo === 'lifetime' ? `no trial de ${TRIAL_DURATION_DAYS} dias` : 'este mes';
+    return `Publicacoes: ${publishLimit.usados}/${publishLimit.limite} ${periodo}.`;
+  }, [permissions.hasUnlimitedFreights, publishLimit]);
   
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1); // 1: endereços/rota, 2: carga, 3: veículo/preço
@@ -257,7 +268,10 @@ export default function NovoFreteScreen() {
     if (!permissions.hasUnlimitedFreights) {
       const limiteCheck = await FretesService.verificarLimitePublicacaoEmpresa(user.id);
       if (!limiteCheck.allowed) {
-        Alert.alert('Limite do plano', limiteCheck.error || 'Limite mensal atingido.');
+        setLimitPaywall({
+          visible: true,
+          message: limiteCheck.error || 'Voce atingiu o limite de publicacoes do seu plano. Assine ou faca upgrade para publicar mais fretes.',
+        });
         return;
       }
     }
@@ -298,7 +312,16 @@ export default function NovoFreteScreen() {
         { text: 'Ótimo', onPress: () => router.back() }
       ]);
     } else {
-      Alert.alert('Erro', result.error || 'Não foi possível cadastrar o frete.');
+      const errorMessage = result.error || 'Nao foi possivel cadastrar o frete.';
+      const lowerError = errorMessage.toLowerCase();
+      if (lowerError.includes('limite') || lowerError.includes('plano') || lowerError.includes('publica')) {
+        setLimitPaywall({
+          visible: true,
+          message: errorMessage,
+        });
+      } else {
+        Alert.alert('Erro', errorMessage);
+      }
     }
   };
 
@@ -795,6 +818,18 @@ export default function NovoFreteScreen() {
           </View>
         </View>
       </ScrollView>
+      <PaywallModal
+        visible={limitPaywall.visible}
+        onClose={() => setLimitPaywall(prev => ({ ...prev, visible: false }))}
+        title="Limite atingido"
+        message={limitPaywall.message}
+        benefits={[
+          'Mais publicacoes de frete',
+          'Limites maiores por mes',
+          'Gestao avancada da operacao',
+          'Suporte prioritario',
+        ]}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -949,9 +984,7 @@ const styles = StyleSheet.create({
   },
 
   // Fade animations placeholders
-  stepFade: {
-    animationDuration: '0.3s',
-  },
+  stepFade: {},
 
   // Rota Timeline visual
   timelineContainer: {

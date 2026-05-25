@@ -60,6 +60,13 @@ Deno.serve(async (req) => {
     }
 
     const { tier, group, successUrl, cancelUrl, metodoPagamento, amountCents } = await req.json();
+    if (!['bronze', 'prata', 'ouro'].includes(tier) || !['motorista', 'empresa'].includes(group)) {
+      return new Response(JSON.stringify({ error: 'Plano invalido' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const priceKey = `${group}_${tier}`;
     const priceId = PRICE_IDS[priceKey];
 
@@ -71,16 +78,20 @@ Deno.serve(async (req) => {
     }
 
     // App: cartao | pix | boleto → Stripe: card | pix | boleto
-    const metodoMap: Record<string, 'card' | 'pix' | 'boleto'> = {
+    if (metodoPagamento === 'pix') {
+      return new Response(JSON.stringify({
+        error: 'PIX nao esta disponivel para assinatura mensal recorrente na Stripe. Use cartao ou boleto.',
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const metodoMap: Record<string, 'card' | 'boleto'> = {
       cartao: 'card',
-      pix: 'pix',
       boleto: 'boleto',
     };
     const stripeMethod = metodoMap[metodoPagamento as string] ?? 'card';
-
-    const mandateAmount = typeof amountCents === 'number' && amountCents > 0
-      ? Math.max(amountCents * 2, 40000)
-      : 40000;
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'subscription',
@@ -108,18 +119,6 @@ Deno.serve(async (req) => {
     if (stripeMethod === 'boleto') {
       sessionParams.payment_method_options = {
         boleto: { expires_after_days: 3 },
-      };
-    }
-
-    if (stripeMethod === 'pix') {
-      sessionParams.payment_method_options = {
-        pix: {
-          mandate_options: {
-            payment_schedule: 'monthly',
-            amount: mandateAmount,
-            amount_type: 'maximum',
-          },
-        },
       };
     }
 

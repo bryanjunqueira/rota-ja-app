@@ -44,6 +44,41 @@ function resolveTier(
   return null;
 }
 
+function resolveGroup(metadata: Record<string, string> | null | undefined): string | null {
+  const group = metadata?.user_group;
+  return group === 'motorista' || group === 'empresa' ? group : null;
+}
+
+function mergeMetadata(...sources: Array<Record<string, string> | null | undefined>): Record<string, string> {
+  return Object.assign({}, ...sources.filter(Boolean)) as Record<string, string>;
+}
+
+async function resolveFromStoredSubscription(
+  supabase: any,
+  subscriptionId?: string | null,
+  customerId?: string | null
+): Promise<{ userId: string | null; tier: string | null; group: string | null }> {
+  let query = supabase
+    .from('assinaturas')
+    .select('user_id, tipo_plano, tipo_usuario')
+    .limit(1);
+
+  if (subscriptionId) {
+    query = query.eq('stripe_subscription_id', subscriptionId);
+  } else if (customerId) {
+    query = query.eq('stripe_customer_id', customerId);
+  } else {
+    return { userId: null, tier: null, group: null };
+  }
+
+  const { data } = await query.maybeSingle();
+  return {
+    userId: data?.user_id ?? null,
+    tier: data?.tipo_plano ?? null,
+    group: data?.tipo_usuario ?? null,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -73,21 +108,19 @@ Deno.serve(async (req) => {
       event.type === 'checkout.session.completed' ||
       event.type === 'invoice.paid'
     ) {
-      const obj = event.data.object as Stripe.Checkout.Session | Stripe.Invoice;
-      const metadata =
-        'metadata' in obj && obj.metadata
-          ? (obj.metadata as Record<string, string>)
-          : undefined;
+      const obj = event.data.object as any;
+      let metadata = mergeMetadata(obj.metadata as Record<string, string> | undefined);
 
-      let userId = metadata?.user_id;
+      let userId: string | null = metadata?.user_id ?? null;
       let tier = resolveTier(metadata);
+      let group = resolveGroup(metadata);
       let customerId: string | null = null;
       let subscriptionId: string | null = null;
       let priceId: string | null = null;
 
       if (event.type === 'checkout.session.completed') {
         const session = obj as Stripe.Checkout.Session;
-        userId = userId ?? session.client_reference_id ?? undefined;
+        userId = userId ?? session.client_reference_id ?? null;
         customerId =
           typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null;
         subscriptionId =
@@ -97,8 +130,10 @@ Deno.serve(async (req) => {
       }
 
       if (event.type === 'invoice.paid') {
-        const invoice = obj as Stripe.Invoice;
-        userId = userId ?? invoice.metadata?.user_id;
+        const invoice = obj as any;
+        metadata = mergeMetadata(invoice.subscription_details?.metadata, invoice.metadata);
+        userId = userId ?? metadata?.user_id ?? null;
+        group = group ?? resolveGroup(metadata);
         customerId =
           typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id ?? null;
         subscriptionId =
@@ -108,11 +143,31 @@ Deno.serve(async (req) => {
         const line = invoice.lines?.data?.[0];
         priceId =
           typeof line?.price === 'string' ? line.price : line?.price?.id ?? null;
-        if (!tier) tier = resolveTier(invoice.metadata as Record<string, string>, priceId);
+        if (!tier) tier = resolveTier(metadata, priceId);
       }
 
-      if (!userId || !tier) {
-        console.warn('Evento Stripe sem user_id ou plan_tier', event.type);
+      if (subscriptionId && (!userId || !tier || !group)) {
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const subscriptionMetadata = subscription.metadata as Record<string, string>;
+        userId = userId ?? subscriptionMetadata?.user_id ?? null;
+        tier = tier ?? resolveTier(subscriptionMetadata, priceId);
+        group = group ?? resolveGroup(subscriptionMetadata);
+        customerId =
+          customerId ??
+          (typeof subscription.customer === 'string'
+            ? subscription.customer
+            : subscription.customer?.id ?? null);
+      }
+
+      if (!userId && (subscriptionId || customerId)) {
+        const stored = await resolveFromStoredSubscription(supabase, subscriptionId, customerId);
+        userId = stored.userId;
+        tier = tier ?? stored.tier;
+        group = group ?? stored.group;
+      }
+
+      if (!userId || !tier || !group) {
+        console.warn('Evento Stripe sem user_id, plan_tier ou user_group', event.type);
         return new Response(JSON.stringify({ received: true, skipped: true }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -125,6 +180,7 @@ Deno.serve(async (req) => {
         p_stripe_customer_id: customerId,
         p_stripe_subscription_id: subscriptionId,
         p_acao: event.type,
+        p_tipo_usuario: group,
       });
 
       if (error) {
@@ -139,10 +195,32 @@ Deno.serve(async (req) => {
       event.type === 'customer.subscription.deleted' ||
       event.type === 'invoice.payment_failed'
     ) {
-      const sub = event.data.object as Stripe.Subscription | Stripe.Invoice;
-      const userId =
-        (sub as Stripe.Subscription).metadata?.user_id ??
-        (sub as Stripe.Invoice).metadata?.user_id;
+      const obj = event.data.object as any;
+      let metadata = mergeMetadata(obj.subscription_details?.metadata, obj.metadata);
+      let userId: string | null = metadata?.user_id ?? null;
+      let customerId: string | null =
+        typeof obj.customer === 'string' ? obj.customer : obj.customer?.id ?? null;
+      let subscriptionId: string | null =
+        typeof obj.subscription === 'string' ? obj.subscription : obj.subscription?.id ?? null;
+
+      if (!subscriptionId && event.type === 'customer.subscription.deleted') {
+        subscriptionId = obj.id ?? null;
+      }
+
+      if (subscriptionId && !userId) {
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        userId = subscription.metadata?.user_id ?? null;
+        customerId =
+          customerId ??
+          (typeof subscription.customer === 'string'
+            ? subscription.customer
+            : subscription.customer?.id ?? null);
+      }
+
+      if (!userId && (subscriptionId || customerId)) {
+        const stored = await resolveFromStoredSubscription(supabase, subscriptionId, customerId);
+        userId = stored.userId;
+      }
 
       if (userId) {
         await supabase

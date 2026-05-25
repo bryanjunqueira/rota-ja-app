@@ -83,6 +83,7 @@ export const MotoristasService = {
           tipo_carroceria: dados.tipoCarroceria,
           foto_cnh_url: dados.fotoCnhUrl || null,
           foto_motorista_url: dados.fotoMotoristaUrl || null,
+          status: 'pendente',
         });
 
       if (error) {

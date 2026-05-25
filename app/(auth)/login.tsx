@@ -56,15 +56,20 @@ export default function LoginScreen() {
       return;
     }
 
-    if (userType === 'empresa' && result.userId) {
-      const statusResult = await AuthService.verificarStatusEmpresa(result.userId);
-      if (statusResult.status && statusResult.status !== 'aprovado') {
+    if (result.userId) {
+      const statusResult = await AuthService.verificarStatusPerfil(result.userId);
+      const status = statusResult.status || 'pendente';
+
+      if (status !== 'aprovado') {
         const msgs: Record<string, string> = {
-          pendente: 'Sua conta está pendente de aprovação. Aguarde a análise da nossa equipe.',
-          rejeitada: 'Sua conta foi rejeitada. Entre em contato com nosso suporte.',
-          bloqueada: 'Sua conta foi bloqueada. Entre em contato com nosso suporte.',
+          pendente: 'Seu perfil esta em analise. Voce sera avisado quando o cadastro for aprovado.',
+          rejeitado: 'Seu cadastro foi recusado. Este email nao pode acessar o app.',
+          rejeitada: 'Seu cadastro foi recusado. Este email nao pode acessar o app.',
+          reprovado: 'Seu cadastro foi recusado. Este email nao pode acessar o app.',
+          bloqueado: 'Sua conta foi bloqueada. Entre em contato com o suporte.',
+          bloqueada: 'Sua conta foi bloqueada. Entre em contato com o suporte.',
         };
-        setError(msgs[statusResult.status] || 'Sua conta não está aprovada no momento.');
+        setError(statusResult.error || msgs[status] || 'Seu perfil ainda nao esta aprovado.');
         await AuthService.logout();
         setLoading(false);
         return;

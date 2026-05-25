@@ -23,8 +23,12 @@ BEGIN
   FROM assinaturas
   WHERE user_id = NEW.user_id;
 
-  IF v_tipo_plano IS NULL OR v_status_assinatura NOT IN ('trial', 'ativo') THEN
-    v_tipo_plano := 'gratuito';
+  IF v_tipo_plano IS NULL THEN
+    RAISE EXCEPTION 'Assinatura nao encontrada. Escolha um plano para publicar fretes.';
+  END IF;
+
+  IF v_status_assinatura NOT IN ('trial', 'ativo') THEN
+    RAISE EXCEPTION 'Assinatura inativa. Escolha um plano para continuar publicando fretes.';
   END IF;
 
   IF v_tipo_plano = 'ouro' AND v_status_assinatura = 'ativo' THEN

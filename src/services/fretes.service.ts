@@ -369,13 +369,27 @@ export const FretesService = {
     modo?: 'lifetime' | 'monthly' | 'unlimited';
   }> {
     try {
-      const { data: sub } = await supabase
+      const { data: sub, error: subError } = await supabase
         .from('assinaturas')
         .select('tipo_plano, status_assinatura, trial_fim')
         .eq('user_id', userId)
         .maybeSingle();
 
+      if (subError) {
+        return {
+          allowed: false,
+          error: 'Nao foi possivel validar sua assinatura. Tente novamente.',
+        };
+      }
+
       const status = (sub?.status_assinatura as SubscriptionStatus) || null;
+      if (!sub || (status !== 'trial' && status !== 'ativo')) {
+        return {
+          allowed: false,
+          error: 'Sua assinatura nao esta ativa. Escolha um plano para continuar publicando fretes.',
+        };
+      }
+
       const tier: PlanTier =
         status === 'ativo' || status === 'trial'
           ? ((sub?.tipo_plano as PlanTier) || 'gratuito')
@@ -427,7 +441,10 @@ export const FretesService = {
 
       return { allowed: true, usados, limite, modo: 'monthly' };
     } catch {
-      return { allowed: true };
+      return {
+        allowed: false,
+        error: 'Nao foi possivel validar sua assinatura. Tente novamente.',
+      };
     }
   },
 
@@ -490,6 +507,11 @@ export const FretesService = {
 
       if (error) {
         console.error('[criarFrete] ERRO no insert:', error);
+        const dbMessage = error.message || '';
+        const lowerMessage = dbMessage.toLowerCase();
+        if (lowerMessage.includes('limite') || lowerMessage.includes('plano') || lowerMessage.includes('publica')) {
+          return { success: false, error: dbMessage };
+        }
         return { success: false, error: 'Erro ao cadastrar frete. Tente novamente.' };
       }
       console.log('[criarFrete] SUCESSO! Frete criado:', insertResult);

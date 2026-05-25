@@ -3,3 +3,6 @@ project_id = "tbiepfclghsrwinqluls"
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+[functions.approve-registration]
+verify_jwt = false

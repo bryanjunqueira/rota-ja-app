@@ -9,12 +9,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/hooks/useAuth';
 import { FretesService, NotificacoesService, VeiculosService } from '@/services';
-import { LoadingSpinner, Badge, CancelModal, PremiumBadge } from '@/components';
+import { LoadingSpinner, Badge, CancelModal, PremiumBadge, PaywallModal } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, getStatusLabel } from '@/config/theme';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSubscription } from '@/hooks/useSubscription';
-import { FretesService } from '@/services/fretes.service';
 import { supabase } from '@/lib/supabase';
 
 // ─── DASHBOARD MOTORISTA ───
@@ -212,6 +211,10 @@ function DashboardEmpresa() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filtro, setFiltro] = useState('todos');
+  const [limitPaywall, setLimitPaywall] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: '',
+  });
 
   // Ações do Frete
   const [selectedFrete, setSelectedFrete] = useState<any>(null);
@@ -251,10 +254,10 @@ function DashboardEmpresa() {
     if (!permissions.hasUnlimitedFreights) {
       const check = await FretesService.verificarLimitePublicacaoEmpresa(user.id);
       if (!check.allowed) {
-        Alert.alert('Limite do plano', check.error || 'Limite de publicações atingido.', [
-          { text: 'Ver planos', onPress: () => router.push('/(auth)/planos') },
-          { text: 'OK' },
-        ]);
+        setLimitPaywall({
+          visible: true,
+          message: check.error || 'Voce atingiu o limite de publicacoes do seu plano. Assine ou faca upgrade para publicar mais fretes.',
+        });
         return;
       }
     }
@@ -763,6 +766,18 @@ function DashboardEmpresa() {
         subtitle="Esta ação registrará o cancelamento e o motivo no histórico do sistema."
         reasons={MOTIVOS_CANCELAMENTO}
         loading={cancelling}
+      />
+      <PaywallModal
+        visible={limitPaywall.visible}
+        onClose={() => setLimitPaywall(prev => ({ ...prev, visible: false }))}
+        title="Limite atingido"
+        message={limitPaywall.message}
+        benefits={[
+          'Mais publicacoes de frete',
+          'Limites maiores por mes',
+          'Gestao avancada da operacao',
+          'Suporte prioritario',
+        ]}
       />
     </ScrollView>
   );

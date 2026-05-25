@@ -114,12 +114,14 @@ export function SubscriptionProvider({ children, userId, userGroup }: Subscripti
   const loadSubscription = useCallback(async () => {
     if (!userId) {
       setSubscription(null);
+      setNeedsUpgradeState(false);
       setLoading(false);
       setInitialized(true);
       return;
     }
 
     try {
+      setLoading(true);
       const result = await AssinaturasService.verificarStatus(userId);
       if (!result.data && userGroup) {
         // Criar trial automático em background para contas existentes que não o possuem
@@ -141,7 +143,7 @@ export function SubscriptionProvider({ children, userId, userGroup }: Subscripti
       setLoading(false);
       setInitialized(true);
     }
-  }, [userId]);
+  }, [userId, userGroup]);
 
   // Refresh público
   const refreshSubscription = useCallback(async () => {

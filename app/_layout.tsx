@@ -78,8 +78,9 @@ function RootNavigationGuard() {
     const segs = segments as string[];
     const inAuthGroup = segs[0] === '(auth)';
     const isOnboarding = segs[1] === 'onboarding';
-    const isPublicAuthRoute = segs[1] === 'planos' || segs[1] === 'checkout';
+    const isPublicAuthRoute = segs[1] === 'planos' || segs[1] === 'checkout' || segs[1] === 'verificar-email';
     const inAppGroup = segs[0] === '(app)';
+    const isProtectedAppRoute = inAppGroup || (!inAuthGroup && !isOnboarding);
 
     // ── REGRA 1: Primeiro acesso → Onboarding (independente de login!)
     if (!onboardingSeen && !isOnboarding) {
@@ -119,7 +120,7 @@ function RootNavigationGuard() {
         } else if (role === null && !loading) {
           router.replace('/(auth)/selecionar-perfil');
         }
-      } else if (user && inAppGroup && needsUpgrade) {
+      } else if (user && isProtectedAppRoute && needsUpgrade) {
         // Redireciona para planos se a assinatura expirou e ele tentar navegar no app
         router.replace('/(auth)/planos');
       }

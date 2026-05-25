@@ -65,9 +65,10 @@ export async function rpcProcessarPagamento(
   }
 
   const payload = data as { success: boolean; data?: AssinaturaData; error?: string };
+  const parsed = parseAssinaturaRow(payload?.data);
   return {
     success: !!payload?.success,
-    data: parseAssinaturaRow(payload?.data),
+    data: parsed ?? undefined,
     error: payload?.error,
   };
 }
@@ -76,16 +77,18 @@ export async function rpcCancelarAssinatura(): Promise<RpcResult<AssinaturaData>
   const { data, error } = await supabase.rpc('cancelar_minha_assinatura');
   if (error) return { success: false, error: mapRpcError(error.message) };
   const payload = data as { success: boolean; data?: AssinaturaData };
-  return { success: !!payload?.success, data: parseAssinaturaRow(payload?.data) };
+  const parsed = parseAssinaturaRow(payload?.data);
+  return { success: !!payload?.success, data: parsed ?? undefined };
 }
 
 export async function rpcRenovarAssinatura(): Promise<RpcResult<AssinaturaData>> {
   const { data, error } = await supabase.rpc('renovar_minha_assinatura');
   if (error) return { success: false, error: mapRpcError(error.message) };
   const payload = data as { success: boolean; data?: AssinaturaData; error?: string };
+  const parsed = parseAssinaturaRow(payload?.data);
   return {
     success: !!payload?.success,
-    data: parseAssinaturaRow(payload?.data),
+    data: parsed ?? undefined,
     error: payload?.error,
   };
 }
@@ -94,5 +97,6 @@ export async function rpcSimularExpiracao(): Promise<RpcResult<AssinaturaData>> 
   const { data, error } = await supabase.rpc('simular_expiracao_assinatura');
   if (error) return { success: false, error: mapRpcError(error.message) };
   const payload = data as { success: boolean; data?: AssinaturaData };
-  return { success: !!payload?.success, data: parseAssinaturaRow(payload?.data) };
+  const parsed = parseAssinaturaRow(payload?.data);
+  return { success: !!payload?.success, data: parsed ?? undefined };
 }

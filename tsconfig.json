@@ -12,5 +12,9 @@
   "include": [
     "**/*.ts",
     "**/*.tsx"
+  ],
+  "exclude": [
+    "supabase/functions/**",
+    "src/services/run_audit_tests.ts"
   ]
 }

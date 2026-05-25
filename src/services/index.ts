@@ -10,7 +10,7 @@ export { UploadService } from './upload.service';
 export { VeiculosService } from './veiculos.service';
 export { AssinaturasService } from './assinaturas.service';
 
-export type { LoginResult, SignUpResult, EmpresaStatusResult } from './auth.service';
+export type { LoginResult, SignUpResult, EmpresaStatusResult, PerfilStatusResult } from './auth.service';
 export type { CadastroMotoristaData, MotoristaData } from './motoristas.service';
 export type { CadastroEmpresaData, EmpresaData } from './empresas.service';
 export type { CriarFreteData, FreteData } from './fretes.service';

@@ -25,6 +25,12 @@ export interface EmpresaStatusResult {
   error?: string;
 }
 
+export interface PerfilStatusResult {
+  role: 'motorista' | 'empresa' | null;
+  status: string | null;
+  error?: string;
+}
+
 export const AuthService = {
   /**
    * Login com email e senha
@@ -134,6 +140,50 @@ export const AuthService = {
   },
 
   /**
+   * Confirma o email pelo codigo OTP enviado no cadastro.
+   */
+  async verifySignupOtp(email: string, token: string): Promise<{ success: boolean; userId?: string; error?: string }> {
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'signup',
+      });
+
+      if (error) {
+        return { success: false, error: 'Codigo invalido ou expirado. Confira o email e tente novamente.' };
+      }
+
+      return { success: true, userId: data.user?.id };
+    } catch (error) {
+      console.error('Erro inesperado ao confirmar codigo:', error);
+      return { success: false, error: 'Erro inesperado ao confirmar email.' };
+    }
+  },
+
+  /**
+   * Apos confirmar email, avisa o dono do app para aprovar/rejeitar o perfil.
+   */
+  async solicitarAprovacaoCadastro(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { data, error } = await supabase.functions.invoke('send-approval-email');
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      const payload = data as { success?: boolean; error?: string } | null;
+      if (payload?.error) {
+        return { success: false, error: payload.error };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Erro ao solicitar aprovacao:', error);
+      return { success: false, error: 'Nao foi possivel enviar o cadastro para analise.' };
+    }
+  },
+
+  /**
    * Enviar email de recuperação de senha
    */
   async resetPassword(email: string): Promise<{ success: boolean; error?: string }> {
@@ -210,6 +260,46 @@ export const AuthService = {
     } catch (error) {
       console.error('Erro inesperado:', error);
       return { status: null, error: 'Erro inesperado ao verificar status.' };
+    }
+  },
+
+  /**
+   * Verifica o status real do perfil, independente do tipo selecionado na tela.
+   */
+  async verificarStatusPerfil(userId: string): Promise<PerfilStatusResult> {
+    try {
+      const { data: motorista, error: motError } = await supabase
+        .from('motoristas')
+        .select('status')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (motError) {
+        return { role: null, status: null, error: 'Erro ao verificar perfil.' };
+      }
+
+      if (motorista) {
+        return { role: 'motorista', status: motorista.status || 'pendente' };
+      }
+
+      const { data: empresa, error: empError } = await supabase
+        .from('empresas')
+        .select('status')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (empError) {
+        return { role: null, status: null, error: 'Erro ao verificar perfil.' };
+      }
+
+      if (empresa) {
+        return { role: 'empresa', status: empresa.status || 'pendente' };
+      }
+
+      return { role: null, status: null, error: 'Perfil nao encontrado.' };
+    } catch (error) {
+      console.error('Erro inesperado ao verificar perfil:', error);
+      return { role: null, status: null, error: 'Erro inesperado ao verificar perfil.' };
     }
   },
 };

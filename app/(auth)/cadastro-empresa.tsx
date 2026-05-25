@@ -89,9 +89,8 @@ export default function CadastroEmpresaScreen() {
       // Criar trial automático na tabela de assinaturas
       await AssinaturasService.criarTrialAutomatico(authResult.userId, 'empresa');
 
-      Alert.alert('Cadastro realizado!', 'Verifique seu email para confirmar a conta. Sua empresa será analisada pela equipe.', [
-        { text: 'OK', onPress: () => { refreshProfile(); router.replace('/(auth)/login'); } }
-      ]);
+      refreshProfile();
+      router.replace(`/(auth)/verificar-email?email=${encodeURIComponent(form.email.trim())}`);
     } else {
       Alert.alert('Conta criada', 'Sua conta foi criada, mas houve um problema ao salvar os dados da empresa. Complete o cadastro após o login.');
       router.replace('/(auth)/login');

@@ -122,9 +122,8 @@ export default function CadastroMotoristaScreen() {
       // 4. Criar trial automático na tabela de assinaturas
       await AssinaturasService.criarTrialAutomatico(authResult.userId, 'motorista');
 
-      Alert.alert('Cadastro realizado!', 'Verifique seu email para confirmar a conta.', [
-        { text: 'OK', onPress: () => { refreshProfile(); router.replace('/(auth)/login'); } }
-      ]);
+      refreshProfile();
+      router.replace(`/(auth)/verificar-email?email=${encodeURIComponent(form.email.trim())}`);
     } else {
       Alert.alert('Conta criada', 'Sua conta foi criada, mas houve um problema ao salvar o perfil. Tente completar o cadastro após fazer login.');
       router.replace('/(auth)/login');

@@ -22,6 +22,7 @@ interface PaywallModalProps {
   requiredPlan?: string;
   title?: string;
   message?: string;
+  benefits?: string[];
 }
 
 export function PaywallModal({
@@ -31,8 +32,15 @@ export function PaywallModal({
   requiredPlan,
   title,
   message,
+  benefits,
 }: PaywallModalProps) {
   const router = useRouter();
+  const benefitList = benefits ?? [
+    'Fretes ilimitados',
+    'Prioridade nas candidaturas',
+    'Dashboard avançado',
+    'Suporte VIP',
+  ];
 
   const handleUpgrade = () => {
     onClose();
@@ -74,12 +82,7 @@ export function PaywallModal({
 
           {/* Benefícios rápidos */}
           <View style={styles.benefits}>
-            {[
-              'Fretes ilimitados',
-              'Prioridade nas candidaturas',
-              'Dashboard avançado',
-              'Suporte VIP',
-            ].map((b, i) => (
+            {benefitList.map((b, i) => (
               <View key={i} style={styles.benefitRow}>
                 <Ionicons name="checkmark-circle" size={18} color="#FFB300" />
                 <Text style={styles.benefitText}>{b}</Text>

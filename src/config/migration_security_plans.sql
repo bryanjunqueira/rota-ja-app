@@ -170,8 +170,12 @@ BEGIN
   FROM assinaturas
   WHERE user_id = NEW.user_id;
 
-  IF v_tipo_plano IS NULL OR v_status_assinatura NOT IN ('trial', 'ativo') THEN
-    v_tipo_plano := 'gratuito';
+  IF v_tipo_plano IS NULL THEN
+    RAISE EXCEPTION 'Assinatura nao encontrada. Escolha um plano para publicar fretes.';
+  END IF;
+
+  IF v_status_assinatura NOT IN ('trial', 'ativo') THEN
+    RAISE EXCEPTION 'Assinatura inativa. Escolha um plano para continuar publicando fretes.';
   END IF;
 
   IF v_tipo_plano = 'ouro' AND v_status_assinatura = 'ativo' THEN
@@ -502,12 +506,15 @@ END;
 $$;
 
 -- ── 8. RPC: aplicar plano via webhook Stripe (service_role apenas) ──
+DROP FUNCTION IF EXISTS public.aplicar_plano_stripe(UUID, TEXT, TEXT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.aplicar_plano_stripe(
   p_user_id UUID,
   p_novo_plano TEXT,
   p_stripe_customer_id TEXT DEFAULT NULL,
   p_stripe_subscription_id TEXT DEFAULT NULL,
-  p_acao TEXT DEFAULT 'stripe_webhook'
+  p_acao TEXT DEFAULT 'stripe_webhook',
+  p_tipo_usuario TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -527,9 +534,14 @@ BEGIN
     RAISE EXCEPTION 'Plano inválido';
   END IF;
 
+  IF p_tipo_usuario IS NOT NULL AND p_tipo_usuario NOT IN ('motorista', 'empresa') THEN
+    RAISE EXCEPTION 'Tipo de usuario invalido';
+  END IF;
+
   PERFORM public.assinatura_set_authoritative();
 
   UPDATE assinaturas SET
+    tipo_usuario = COALESCE(p_tipo_usuario, tipo_usuario),
     tipo_plano = p_novo_plano,
     status_assinatura = 'ativo',
     status_pagamento = 'aprovado',
@@ -545,12 +557,41 @@ BEGIN
   WHERE user_id = p_user_id
   RETURNING * INTO v_row;
 
-  PERFORM public.assinatura_clear_authoritative();
-
   IF NOT FOUND THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Assinatura não encontrada');
+    INSERT INTO assinaturas (
+      user_id,
+      tipo_usuario,
+      tipo_plano,
+      status_assinatura,
+      status_pagamento,
+      assinatura_inicio,
+      assinatura_fim,
+      ultimo_pagamento,
+      proximo_pagamento,
+      renovacao_automatica,
+      stripe_customer_id,
+      stripe_subscription_id,
+      historico_planos
+    )
+    VALUES (
+      p_user_id,
+      COALESCE(p_tipo_usuario, 'motorista'),
+      p_novo_plano,
+      'ativo',
+      'aprovado',
+      v_agora,
+      v_fim,
+      v_agora,
+      v_fim,
+      true,
+      p_stripe_customer_id,
+      p_stripe_subscription_id,
+      jsonb_build_array(jsonb_build_object('plano', p_novo_plano, 'data', v_agora, 'acao', p_acao))
+    )
+    RETURNING * INTO v_row;
   END IF;
 
+  PERFORM public.assinatura_clear_authoritative();
   RETURN jsonb_build_object('success', true, 'data', to_jsonb(v_row));
 END;
 $$;
@@ -561,7 +602,7 @@ GRANT EXECUTE ON FUNCTION public.processar_assinatura_pagamento(TEXT, TEXT, TEXT
 GRANT EXECUTE ON FUNCTION public.cancelar_minha_assinatura() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.renovar_minha_assinatura() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.simular_expiracao_assinatura() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.aplicar_plano_stripe(UUID, TEXT, TEXT, TEXT, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.aplicar_plano_stripe(UUID, TEXT, TEXT, TEXT, TEXT, TEXT) TO service_role;
 
 COMMENT ON FUNCTION public.sync_assinatura_status IS 'Verifica expiração de trial/assinatura e retorna estado atualizado';
 COMMENT ON FUNCTION public.processar_assinatura_pagamento IS 'Processa pagamento sandbox até integração Stripe';

@@ -103,6 +103,7 @@ export const EmpresasService = {
           telefone: dados.telefone,
           nome_responsavel: dados.nomeResponsavel,
           cargo: dados.cargo,
+          status: 'pendente',
         });
 
       if (error) {
