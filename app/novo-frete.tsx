@@ -7,7 +7,7 @@
  * - Grelha de veículos premium com seleção visual interativa
  * - Visualizadores de rota (timeline Coleta -> Entrega)
  */
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
+import { useSubscription } from '@/hooks/useSubscription';
 import { FretesService, CriarFreteData } from '@/services/fretes.service';
+import { isEmpresaGratuitoLifetimeLimit, TRIAL_DURATION_DAYS } from '@/config/plans';
 import { Button, Input } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
 
@@ -48,7 +50,26 @@ const TIPOS_VEICULOS = [
 export default function NovoFreteScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { permissions, tier, status, isTrialActive } = useSubscription();
   const insets = useSafeAreaInsets();
+
+  const [publishLimit, setPublishLimit] = useState<{
+    usados: number;
+    limite: number;
+    modo?: string;
+  } | null>(null);
+
+  const loadPublishLimit = useCallback(async () => {
+    if (!user?.id) return;
+    const check = await FretesService.verificarLimitePublicacaoEmpresa(user.id);
+    if (check.limite != null && check.usados != null) {
+      setPublishLimit({ usados: check.usados, limite: check.limite, modo: check.modo });
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadPublishLimit();
+  }, [loadPublishLimit, tier, status]);
   
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1); // 1: endereços/rota, 2: carga, 3: veículo/preço
@@ -224,6 +245,23 @@ export default function NovoFreteScreen() {
 
   const handleSubmit = async () => {
     if (!validateStep3() || !user) return;
+
+    if (!permissions.canPublishFreight) {
+      Alert.alert(
+        'Plano necessário',
+        'Seu plano atual não permite publicar fretes. Escolha um plano para empresas.'
+      );
+      return;
+    }
+
+    if (!permissions.hasUnlimitedFreights) {
+      const limiteCheck = await FretesService.verificarLimitePublicacaoEmpresa(user.id);
+      if (!limiteCheck.allowed) {
+        Alert.alert('Limite do plano', limiteCheck.error || 'Limite mensal atingido.');
+        return;
+      }
+    }
+
     setLoading(true);
 
     const dados: CriarFreteData = {
@@ -255,7 +293,8 @@ export default function NovoFreteScreen() {
     setLoading(false);
 
     if (result.success) {
-      Alert.alert('🎉 Sucesso!', 'Seu frete foi cadastrado e já está visível para milhares de motoristas com o plano ativo!', [
+      await loadPublishLimit();
+      Alert.alert('🎉 Sucesso!', 'Seu frete foi cadastrado e já está visível para motoristas na plataforma!', [
         { text: 'Ótimo', onPress: () => router.back() }
       ]);
     } else {
@@ -282,6 +321,17 @@ export default function NovoFreteScreen() {
             <View style={{ width: 40 }} />
           </View>
           <Text style={styles.headerSubtitle}>Crie e publique cargas para motoristas autônomos</Text>
+          {limitLabel ? (
+            <View style={styles.limitBanner}>
+              <Ionicons name="information-circle" size={18} color={COLORS.primary} />
+              <Text style={styles.limitBannerText}>{limitLabel}</Text>
+            </View>
+          ) : null}
+          {isTrialActive ? (
+            <Text style={styles.trialHint}>
+              Período de teste: até {TRIAL_DURATION_DAYS} dias e limite de publicações do plano gratuito.
+            </Text>
+          ) : null}
 
           {/* Indicador de Progresso Premium com Linha Conectora */}
           <View style={styles.progressContainer}>
@@ -783,6 +833,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     lineHeight: 20,
+    marginBottom: SPACING.sm,
+  },
+  limitBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#EFF6FF',
+    padding: 12,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  limitBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  trialHint: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
     marginBottom: SPACING.md,
   },
 

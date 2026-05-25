@@ -1,0 +1,5 @@
+# RotaJá — Supabase (deploy Edge Functions)
+project_id = "tbiepfclghsrwinqluls"
+
+[functions.stripe-webhook]
+verify_jwt = false

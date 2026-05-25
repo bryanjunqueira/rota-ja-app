@@ -11,6 +11,13 @@
  */
 import { supabase } from '@/lib/supabase';
 import {
+  rpcSyncAssinaturaStatus,
+  rpcProcessarPagamento,
+  rpcCancelarAssinatura,
+  rpcRenovarAssinatura,
+  rpcSimularExpiracao,
+} from './assinaturas-rpc';
+import {
   type PlanTier,
   type UserGroup,
   type SubscriptionStatus,
@@ -172,6 +179,17 @@ export const AssinaturasService = {
     error?: string;
   }> {
     try {
+      const rpc = await rpcSyncAssinaturaStatus();
+      if (!rpc.error) {
+        return {
+          data: rpc.data,
+          needsUpgrade: rpc.needsUpgrade,
+          isTrialExpired: rpc.isTrialExpired,
+        };
+      }
+
+      // Fallback legado se RPC ainda não foi aplicada no Supabase
+      console.warn('[AssinaturasService] RPC indisponível, usando leitura direta:', rpc.error);
       const { data, error } = await supabase
         .from('assinaturas')
         .select('*')
@@ -182,82 +200,12 @@ export const AssinaturasService = {
         return { data: null, needsUpgrade: false, isTrialExpired: false, error: error?.message };
       }
 
-      const agora = new Date();
-
-      // ── Verificar trial expirado ──
-      if (
-        data.status_assinatura === 'trial' &&
-        data.trial_fim &&
-        agora > new Date(data.trial_fim)
-      ) {
-        // Trial expirou — atualizar para expirado
-        const { data: updated } = await supabase
-          .from('assinaturas')
-          .update({
-            status_assinatura: 'expirado',
-            historico_planos: [
-              ...(data.historico_planos || []),
-              {
-                plano: data.tipo_plano,
-                data: agora.toISOString(),
-                acao: 'trial_expirado',
-              },
-            ],
-          })
-          .eq('user_id', userId)
-          .select()
-          .single();
-
-        return {
-          data: updated || data,
-          needsUpgrade: true,
-          isTrialExpired: true,
-        };
-      }
-
-      // ── Verificar assinatura paga expirada ──
-      if (
-        data.status_assinatura === 'ativo' &&
-        data.assinatura_fim &&
-        agora > new Date(data.assinatura_fim)
-      ) {
-        // Assinatura expirou
-        const { data: updated } = await supabase
-          .from('assinaturas')
-          .update({
-            status_assinatura: 'expirado',
-            tipo_plano: 'gratuito',
-            historico_planos: [
-              ...(data.historico_planos || []),
-              {
-                plano: data.tipo_plano,
-                data: agora.toISOString(),
-                acao: 'assinatura_expirada',
-              },
-            ],
-          })
-          .eq('user_id', userId)
-          .select()
-          .single();
-
-        return {
-          data: updated || data,
-          needsUpgrade: true,
-          isTrialExpired: false,
-        };
-      }
-
-      // Status normal
       const needsUpgrade =
         data.status_assinatura === 'expirado' ||
         data.status_assinatura === 'cancelado' ||
         data.status_assinatura === 'inadimplente';
 
-      return {
-        data,
-        needsUpgrade,
-        isTrialExpired: false,
-      };
+      return { data, needsUpgrade, isTrialExpired: false };
     } catch (error) {
       console.error('Erro ao verificar status:', error);
       return { data: null, needsUpgrade: false, isTrialExpired: false, error: 'Erro inesperado.' };
@@ -362,92 +310,23 @@ export const AssinaturasService = {
         }
       }
 
-      // ── SANDBOX: Simular cenários ──
-      switch (cenarioSandbox) {
-        case 'aprovado': {
-          const fimAssinatura = new Date(agora);
-          fimAssinatura.setMonth(fimAssinatura.getMonth() + 1); // +1 mês
+      const rpcCenario =
+        cenarioSandbox === 'falha_pagamento' ? 'falha_pagamento' : cenarioSandbox;
 
-          const planoAnterior = current.tipo_plano;
-          const acao =
-            TIER_ORDER[novoPlano] > TIER_ORDER[planoAnterior as PlanTier]
-              ? 'upgrade'
-              : TIER_ORDER[novoPlano] < TIER_ORDER[planoAnterior as PlanTier]
-              ? 'downgrade'
-              : 'ativacao';
-
-          const { data: updated, error } = await supabase
-            .from('assinaturas')
-            .update({
-              tipo_plano: novoPlano,
-              tipo_usuario: tipoUsuario || current.tipo_usuario,
-              status_assinatura: 'ativo',
-              status_pagamento: 'aprovado',
-              metodo_pagamento: metodoPagamento,
-              assinatura_inicio: agora.toISOString(),
-              assinatura_fim: fimAssinatura.toISOString(),
-              ultimo_pagamento: agora.toISOString(),
-              proximo_pagamento: fimAssinatura.toISOString(),
-              historico_planos: [
-                ...(current.historico_planos || []),
-                {
-                  plano: novoPlano,
-                  data: agora.toISOString(),
-                  acao,
-                },
-              ],
-            })
-            .eq('user_id', userId)
-            .select()
-            .single();
-
-          if (error) {
-            return { success: false, error: 'Erro ao processar pagamento.' };
-          }
-
-          return { success: true, data: updated };
-        }
-
-        case 'recusado':
-          await supabase
-            .from('assinaturas')
-            .update({
-              status_pagamento: 'recusado',
-              historico_planos: [
-                ...(current.historico_planos || []),
-                {
-                  plano: novoPlano,
-                  data: agora.toISOString(),
-                  acao: 'pagamento_recusado',
-                },
-              ],
-            })
-            .eq('user_id', userId);
-
-          return { success: false, error: 'Pagamento recusado pela operadora.' };
-
-        case 'falha_pagamento':
-          await supabase
-            .from('assinaturas')
-            .update({
-              status_assinatura: 'inadimplente',
-              status_pagamento: 'recusado',
-              historico_planos: [
-                ...(current.historico_planos || []),
-                {
-                  plano: current.tipo_plano,
-                  data: agora.toISOString(),
-                  acao: 'falha_pagamento',
-                },
-              ],
-            })
-            .eq('user_id', userId);
-
-          return { success: false, error: 'Falha no processamento do pagamento.' };
-
-        default:
-          return { success: false, error: 'Cenário sandbox inválido.' };
+      if (rpcCenario !== 'aprovado' && rpcCenario !== 'recusado' && rpcCenario !== 'falha_pagamento') {
+        return { success: false, error: 'Cenário sandbox inválido.' };
       }
+
+      const rpc = await rpcProcessarPagamento(novoPlano, metodoPagamento, rpcCenario);
+      if (!rpc.error) {
+        return {
+          success: rpc.success,
+          data: rpc.data,
+          error: rpc.error,
+        };
+      }
+
+      return { success: false, error: rpc.error };
     } catch (error) {
       console.error('Erro ao processar pagamento:', error);
       return { success: false, error: 'Erro inesperado.' };
@@ -518,41 +397,10 @@ export const AssinaturasService = {
     userId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const { data: current } = await supabase
-        .from('assinaturas')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (!current) {
-        return { success: false, error: 'Assinatura não encontrada.' };
-      }
-
-      const agora = new Date();
-
-      const { error } = await supabase
-        .from('assinaturas')
-        .update({
-          tipo_plano: 'gratuito',
-          status_assinatura: 'cancelado',
-          status_pagamento: 'cancelado',
-          renovacao_automatica: false,
-          historico_planos: [
-            ...(current.historico_planos || []),
-            {
-              plano: current.tipo_plano,
-              data: agora.toISOString(),
-              acao: 'cancelado',
-            },
-          ],
-        })
-        .eq('user_id', userId);
-
-      if (error) {
-        return { success: false, error: 'Erro ao cancelar assinatura.' };
-      }
-
-      return { success: true };
+      void userId;
+      const rpc = await rpcCancelarAssinatura();
+      if (rpc.success) return { success: true };
+      return { success: false, error: rpc.error || 'Erro ao cancelar assinatura.' };
     } catch (error) {
       return { success: false, error: 'Erro inesperado.' };
     }
@@ -565,49 +413,10 @@ export const AssinaturasService = {
     userId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const { data: current } = await supabase
-        .from('assinaturas')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (!current) {
-        return { success: false, error: 'Assinatura não encontrada.' };
-      }
-
-      if (!current.renovacao_automatica) {
-        return { success: false, error: 'Renovação automática desativada.' };
-      }
-
-      const agora = new Date();
-      const novoFim = new Date(agora);
-      novoFim.setMonth(novoFim.getMonth() + 1);
-
-      const { error } = await supabase
-        .from('assinaturas')
-        .update({
-          status_assinatura: 'ativo',
-          status_pagamento: 'aprovado',
-          assinatura_inicio: agora.toISOString(),
-          assinatura_fim: novoFim.toISOString(),
-          ultimo_pagamento: agora.toISOString(),
-          proximo_pagamento: novoFim.toISOString(),
-          historico_planos: [
-            ...(current.historico_planos || []),
-            {
-              plano: current.tipo_plano,
-              data: agora.toISOString(),
-              acao: 'renovacao',
-            },
-          ],
-        })
-        .eq('user_id', userId);
-
-      if (error) {
-        return { success: false, error: 'Erro ao renovar.' };
-      }
-
-      return { success: true };
+      void userId;
+      const rpc = await rpcRenovarAssinatura();
+      if (rpc.success) return { success: true };
+      return { success: false, error: rpc.error || 'Erro ao renovar.' };
     } catch (error) {
       return { success: false, error: 'Erro inesperado.' };
     }
@@ -620,40 +429,10 @@ export const AssinaturasService = {
     userId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const { data: current } = await supabase
-        .from('assinaturas')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (!current) {
-        return { success: false, error: 'Assinatura não encontrada.' };
-      }
-
-      const agora = new Date();
-
-      const { error } = await supabase
-        .from('assinaturas')
-        .update({
-          tipo_plano: 'gratuito',
-          status_assinatura: 'expirado',
-          status_pagamento: 'pendente',
-          historico_planos: [
-            ...(current.historico_planos || []),
-            {
-              plano: current.tipo_plano,
-              data: agora.toISOString(),
-              acao: 'expirado_simulado',
-            },
-          ],
-        })
-        .eq('user_id', userId);
-
-      if (error) {
-        return { success: false, error: 'Erro ao simular expiração.' };
-      }
-
-      return { success: true };
+      void userId;
+      const rpc = await rpcSimularExpiracao();
+      if (rpc.success) return { success: true };
+      return { success: false, error: rpc.error || 'Erro ao simular expiração.' };
     } catch (error) {
       return { success: false, error: 'Erro inesperado.' };
     }

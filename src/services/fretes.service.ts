@@ -5,6 +5,13 @@
  * Garante consistência: apenas fretes disponíveis e não aceitos.
  */
 import { supabase } from '@/lib/supabase';
+import {
+  getPermissions,
+  isEmpresaGratuitoLifetimeLimit,
+  TRIAL_DURATION_DAYS,
+  type PlanTier,
+  type SubscriptionStatus,
+} from '@/config/plans';
 
 export interface CriarFreteData {
   empresaId: string;
@@ -313,10 +320,127 @@ export const FretesService = {
   },
 
   /**
+   * Conta todas as publicações da empresa (lifetime — trial/gratuito).
+   */
+  async contarPublicacoesTotal(userId: string): Promise<number> {
+    try {
+      const { count, error } = await supabase
+        .from('fretes')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      if (error) return 0;
+      return count ?? 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  /**
+   * Conta publicações de frete da empresa no mês corrente (UTC).
+   */
+  async contarPublicacoesNoMes(userId: string): Promise<number> {
+    try {
+      const inicioMes = new Date();
+      inicioMes.setUTCDate(1);
+      inicioMes.setUTCHours(0, 0, 0, 0);
+
+      const { count, error } = await supabase
+        .from('fretes')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('created_at', inicioMes.toISOString());
+
+      if (error) return 0;
+      return count ?? 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  /**
+   * Valida limite de publicação da empresa (trial = total no período; pagos = mensal).
+   */
+  async verificarLimitePublicacaoEmpresa(userId: string): Promise<{
+    allowed: boolean;
+    error?: string;
+    usados?: number;
+    limite?: number;
+    modo?: 'lifetime' | 'monthly' | 'unlimited';
+  }> {
+    try {
+      const { data: sub } = await supabase
+        .from('assinaturas')
+        .select('tipo_plano, status_assinatura, trial_fim')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const status = (sub?.status_assinatura as SubscriptionStatus) || null;
+      const tier: PlanTier =
+        status === 'ativo' || status === 'trial'
+          ? ((sub?.tipo_plano as PlanTier) || 'gratuito')
+          : 'gratuito';
+
+      const permissions = getPermissions('empresa', tier);
+
+      if (permissions.hasUnlimitedFreights) {
+        return { allowed: true, modo: 'unlimited' };
+      }
+
+      const limite = permissions.maxFreightsPerMonth;
+      const gratuitoLifetime = isEmpresaGratuitoLifetimeLimit(tier);
+
+      if (gratuitoLifetime) {
+        if (status === 'trial' && sub?.trial_fim && new Date() >= new Date(sub.trial_fim)) {
+          return {
+            allowed: false,
+            usados: await this.contarPublicacoesTotal(userId),
+            limite,
+            modo: 'lifetime',
+            error: `Seu período de teste de ${TRIAL_DURATION_DAYS} dias expirou. Escolha um plano para continuar publicando fretes.`,
+          };
+        }
+
+        const usados = await this.contarPublicacoesTotal(userId);
+        if (usados >= limite) {
+          return {
+            allowed: false,
+            usados,
+            limite,
+            modo: 'lifetime',
+            error: `Limite do plano gratuito atingido (${limite} publicações no período de teste de ${TRIAL_DURATION_DAYS} dias). Faça upgrade para publicar mais fretes.`,
+          };
+        }
+        return { allowed: true, usados, limite, modo: 'lifetime' };
+      }
+
+      const usados = await this.contarPublicacoesNoMes(userId);
+      if (usados >= limite) {
+        return {
+          allowed: false,
+          usados,
+          limite,
+          modo: 'monthly',
+          error: `Limite mensal atingido (${limite} publicações/mês no plano ${tier}). Faça upgrade para publicar mais fretes.`,
+        };
+      }
+
+      return { allowed: true, usados, limite, modo: 'monthly' };
+    } catch {
+      return { allowed: true };
+    }
+  },
+
+  /**
    * Cria um novo frete (empresa) — mesma lógica do web CadastroFreteForm
    */
   async criarFrete(userId: string, dados: CriarFreteData) {
     try {
+      const limiteCheck = await this.verificarLimitePublicacaoEmpresa(userId);
+      if (!limiteCheck.allowed) {
+        return { success: false, error: limiteCheck.error };
+      }
+
       // Buscar empresa_id pelo user_id (como no web)
       console.log('[criarFrete] Buscando empresa para userId:', userId);
       const { data: empresa, error: empError } = await supabase

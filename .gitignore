@@ -20,6 +20,8 @@ web-build/
 # env
 # .env
 # .env.local
+scripts/setup-stripe-supabase.local.ps1
+supabase/.temp/
 
 # debug
 npm-debug.*

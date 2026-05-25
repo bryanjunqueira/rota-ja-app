@@ -3,6 +3,9 @@
 -- ═══════════════════════════════════════════════════════════
 -- Execute este script no Supabase Dashboard > SQL Editor
 -- Data: 2026-05-20
+--
+-- Em seguida execute: src/config/migration_security_plans.sql
+-- (RPCs seguras, triggers de limite e proteção contra auto-upgrade)
 -- ═══════════════════════════════════════════════════════════
 
 -- 1. Limpar tabela legada se existir e criar nova estrutura

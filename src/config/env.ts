@@ -13,8 +13,14 @@ function getEnvVar(name: string): string {
   return value;
 }
 
+export type PaymentsMode = 'sandbox' | 'stripe';
+
 export const ENV = {
   SUPABASE_URL: getEnvVar('EXPO_PUBLIC_SUPABASE_URL'),
   SUPABASE_ANON_KEY: getEnvVar('EXPO_PUBLIC_SUPABASE_ANON_KEY'),
   SUPABASE_PROJECT_ID: getEnvVar('EXPO_PUBLIC_SUPABASE_PROJECT_ID'),
+  /** sandbox = simulação no app | stripe = Checkout via Edge Function */
+  PAYMENTS_MODE: (process.env.EXPO_PUBLIC_PAYMENTS_MODE === 'stripe'
+    ? 'stripe'
+    : 'sandbox') as PaymentsMode,
 } as const;

@@ -8,7 +8,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Modal,
+  TextInput, Alert, ActivityIndicator, Modal, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -17,6 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { useSubscription } from '@/hooks/useSubscription';
 import { AssinaturasService } from '@/services/assinaturas.service';
+import { StripeCheckoutService } from '@/services/stripe-checkout.service';
+import { ENV } from '@/config/env';
 import { COLORS, BORDER_RADIUS, SPACING, SHADOWS, FONT_SIZES } from '@/config/theme';
 import {
   getPlan,
@@ -56,31 +58,55 @@ export default function CheckoutScreen() {
     if (!user?.id) return;
     setProcessing(true);
 
-    const result = await AssinaturasService.processarPagamento(
-      user.id,
-      tier,
-      paymentMethod,
-      scenario,
-      group
-    );
+    try {
+      if (ENV.PAYMENTS_MODE === 'stripe' && scenario === 'aprovado') {
+        const metodoLabel =
+          paymentMethod === 'pix' ? 'PIX' : paymentMethod === 'boleto' ? 'Boleto' : 'Cartão';
+        const stripe = await StripeCheckoutService.criarSessaoCheckout(tier, group, {
+          successUrl: 'rotaja://checkout/success',
+          cancelUrl: 'rotaja://checkout/cancel',
+          metodoPagamento: paymentMethod,
+          amountCents: plan.price,
+        });
+        if (!stripe.url) {
+          Alert.alert('Erro', stripe.error || 'Não foi possível abrir o pagamento Stripe.');
+          return;
+        }
+        await Linking.openURL(stripe.url);
+        Alert.alert(
+          `Pagamento via ${metodoLabel}`,
+          `Você será direcionado à página segura da Stripe para pagar com ${metodoLabel}. ` +
+            'Após a confirmação, volte ao app — seu plano será ativado automaticamente.'
+        );
+        return;
+      }
 
-    setProcessing(false);
-
-    if (result.success) {
-      await refreshSubscription();
-      setShowSuccess(true);
-      setTimeout(() => {
-        setShowSuccess(false);
-        router.replace('/(app)/dashboard');
-      }, 2500);
-    } else {
-      Alert.alert(
-        scenario === 'recusado' ? '❌ Pagamento Recusado' :
-        scenario === 'falha_pagamento' ? '⚠️ Falha no Pagamento' :
-        'Erro',
-        result.error || 'Erro ao processar pagamento.',
-        [{ text: 'OK' }]
+      const result = await AssinaturasService.processarPagamento(
+        user.id,
+        tier,
+        paymentMethod,
+        scenario,
+        group
       );
+
+      if (result.success) {
+        await refreshSubscription();
+        setShowSuccess(true);
+        setTimeout(() => {
+          setShowSuccess(false);
+          router.replace('/(app)/dashboard');
+        }, 2500);
+      } else {
+        Alert.alert(
+          scenario === 'recusado' ? '❌ Pagamento Recusado' :
+          scenario === 'falha_pagamento' ? '⚠️ Falha no Pagamento' :
+          'Erro',
+          result.error || 'Erro ao processar pagamento.',
+          [{ text: 'OK' }]
+        );
+      }
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -117,7 +143,7 @@ export default function CheckoutScreen() {
     if (result.success) {
       await refreshSubscription();
       Alert.alert('🚫 Cancelamento Simulado', 'Assinatura cancelada. Voltando ao plano gratuito.');
-      setTimeout(() => router.replace('/(app)/dashboard'), 1500);
+      setTimeout(() => router.replace('/(auth)/planos'), 1500);
     }
   };
 
@@ -191,8 +217,18 @@ export default function CheckoutScreen() {
           ))}
         </View>
 
-        {/* Formulário Cartão */}
-        {paymentMethod === 'cartao' && (
+        {/* Formulário Cartão (sandbox) ou aviso Stripe */}
+        {ENV.PAYMENTS_MODE === 'stripe' && (
+          <View style={styles.stripeHintBox}>
+            <Ionicons name="shield-checkmark" size={22} color={COLORS.primary} />
+            <Text style={styles.stripeHintText}>
+              Com pagamento real, os dados de {paymentMethod === 'pix' ? 'PIX' : paymentMethod === 'boleto' ? 'boleto' : 'cartão'}{' '}
+              são preenchidos na página segura da Stripe (não nesta tela).
+            </Text>
+          </View>
+        )}
+
+        {ENV.PAYMENTS_MODE !== 'stripe' && paymentMethod === 'cartao' && (
           <View style={styles.formContainer}>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Número do Cartão</Text>
@@ -247,8 +283,8 @@ export default function CheckoutScreen() {
           </View>
         )}
 
-        {/* PIX */}
-        {paymentMethod === 'pix' && (
+        {/* PIX (sandbox) */}
+        {ENV.PAYMENTS_MODE !== 'stripe' && paymentMethod === 'pix' && (
           <View style={styles.pixContainer}>
             <View style={styles.pixQrPlaceholder}>
               <Ionicons name="qr-code" size={80} color={COLORS.textTertiary} style={{ opacity: 0.3 }} />
@@ -263,8 +299,8 @@ export default function CheckoutScreen() {
           </View>
         )}
 
-        {/* Boleto */}
-        {paymentMethod === 'boleto' && (
+        {/* Boleto (sandbox) */}
+        {ENV.PAYMENTS_MODE !== 'stripe' && paymentMethod === 'boleto' && (
           <View style={styles.pixContainer}>
             <View style={styles.pixQrPlaceholder}>
               <Ionicons name="barcode" size={80} color={COLORS.textTertiary} style={{ opacity: 0.3 }} />
@@ -279,8 +315,8 @@ export default function CheckoutScreen() {
           </View>
         )}
 
-        {/* Painel Sandbox */}
-        {showSandbox && (
+        {/* Painel Sandbox (somente modo sandbox) */}
+        {ENV.PAYMENTS_MODE !== 'stripe' && showSandbox && (
           <View style={styles.sandboxPanel}>
             <View style={styles.sandboxHeader}>
               <Ionicons name="flask" size={18} color="#8B5CF6" />
@@ -461,6 +497,23 @@ const styles = StyleSheet.create({
   },
 
   // PIX / Boleto
+  stripeHintBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 16,
+    backgroundColor: '#EFF6FF',
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginBottom: 16,
+  },
+  stripeHintText: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+  },
   pixContainer: {
     alignItems: 'center', padding: 32, backgroundColor: '#fff',
     borderRadius: BORDER_RADIUS.lg, ...SHADOWS.sm,

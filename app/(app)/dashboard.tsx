@@ -14,6 +14,7 @@ import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS, getStatusColor, ge
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSubscription } from '@/hooks/useSubscription';
+import { FretesService } from '@/services/fretes.service';
 import { supabase } from '@/lib/supabase';
 
 // ─── DASHBOARD MOTORISTA ───
@@ -202,9 +203,10 @@ function DashboardMotorista() {
 
 function DashboardEmpresa() {
   const { user, empresa } = useAuth();
-  const { tier } = useSubscription();
+  const { tier, permissions } = useSubscription();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [publishLimit, setPublishLimit] = useState<{ usados: number; limite: number } | null>(null);
   const [fretes, setFretes] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, ativos: 0, andamento: 0, finalizados: 0 });
   const [loading, setLoading] = useState(true);
@@ -231,14 +233,33 @@ function DashboardEmpresa() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const [fretesResult, statsResult] = await Promise.all([
+    const [fretesResult, statsResult, limiteCheck] = await Promise.all([
       FretesService.buscarFretesEmpresa(user.id),
       FretesService.buscarEstatisticasEmpresa(user.id),
+      FretesService.verificarLimitePublicacaoEmpresa(user.id),
     ]);
     setFretes(fretesResult.data);
     setStats(statsResult);
+    if (limiteCheck.limite != null && limiteCheck.usados != null) {
+      setPublishLimit({ usados: limiteCheck.usados, limite: limiteCheck.limite });
+    }
     setLoading(false);
   }, [user]);
+
+  const handleNovoFrete = async () => {
+    if (!user) return;
+    if (!permissions.hasUnlimitedFreights) {
+      const check = await FretesService.verificarLimitePublicacaoEmpresa(user.id);
+      if (!check.allowed) {
+        Alert.alert('Limite do plano', check.error || 'Limite de publicações atingido.', [
+          { text: 'Ver planos', onPress: () => router.push('/(auth)/planos') },
+          { text: 'OK' },
+        ]);
+        return;
+      }
+    }
+    router.push('/novo-frete');
+  };
 
   useEffect(() => { load(); }, [load]);
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
@@ -339,11 +360,20 @@ function DashboardEmpresa() {
             <PremiumBadge tier={tier} size="sm" showLabel={true} />
           )}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.novoFreteBtn} onPress={() => router.push('/novo-frete')} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.novoFreteBtn} onPress={handleNovoFrete} activeOpacity={0.7}>
           <Ionicons name="add-circle" size={18} color={COLORS.white} />
           <Text style={styles.novoBtnText}>Novo Frete</Text>
         </TouchableOpacity>
       </View>
+
+      {!permissions.hasUnlimitedFreights && publishLimit ? (
+        <View style={styles.empresaLimitBanner}>
+          <Text style={styles.empresaLimitText}>
+            Publicações: {publishLimit.usados}/{publishLimit.limite}
+            {tier === 'gratuito' ? ' (trial 7 dias)' : ' (este mês)'}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Stats 4 cards com ícones */}
       <View style={styles.empresaStatsRow}>
@@ -839,6 +869,16 @@ const styles = StyleSheet.create({
   actionDesc: { fontSize: FONT_SIZES.xs, color: COLORS.textSecondary, marginTop: 2 },
 
   // ── Empresa Stats ──
+  empresaLimitBanner: {
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    padding: 10,
+    backgroundColor: '#EFF6FF',
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  empresaLimitText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
   empresaStatsRow: { flexDirection: 'row', paddingHorizontal: SPACING.md, gap: SPACING.sm, marginTop: SPACING.sm },
   empresaStatCard: {
     flex: 1, backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg,

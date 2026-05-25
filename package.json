@@ -7,7 +7,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "npx tsc --noEmit"
+    "lint": "npx tsc --noEmit",
+    "setup:stripe": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-stripe-supabase.local.ps1"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",

@@ -122,6 +122,13 @@ export interface PlanDefinition {
 /** Duração do trial em dias */
 export const TRIAL_DURATION_DAYS = 7;
 
+/** Empresa — limites de publicação (fonte única, espelha motorista) */
+export const EMPRESA_LIMITS = {
+  gratuitoTrialTotal: 5,
+  bronzeMonthly: 15,
+  prataMonthly: 25,
+} as const;
+
 /** Ordem dos tiers (para comparação de upgrade/downgrade) */
 export const TIER_ORDER: Record<PlanTier, number> = {
   gratuito: 0,
@@ -268,7 +275,8 @@ const EMPRESA_GRATUITO_PERMISSIONS: PlanPermissions = {
   canViewFreights: true,
   canPublishFreight: true,
   maxFreightsAvailable: 0,
-  maxFreightsPerMonth: 3,
+  /** Trial/gratuito: cap total no período de teste (não é mensal) */
+  maxFreightsPerMonth: EMPRESA_LIMITS.gratuitoTrialTotal,
   hasUnlimitedFreights: false,
   canUsePriority: false,
   priorityLevel: 0,
@@ -300,7 +308,7 @@ const EMPRESA_GRATUITO_PERMISSIONS: PlanPermissions = {
 const EMPRESA_BRONZE_PERMISSIONS: PlanPermissions = {
   ...EMPRESA_GRATUITO_PERMISSIONS,
   canPublishFreight: true,
-  maxFreightsPerMonth: 15,
+  maxFreightsPerMonth: EMPRESA_LIMITS.bronzeMonthly,
   hasPublicProfile: true,
   canUseChat: true,
   canAccessBasicReports: true,
@@ -310,7 +318,7 @@ const EMPRESA_BRONZE_PERMISSIONS: PlanPermissions = {
 
 const EMPRESA_PRATA_PERMISSIONS: PlanPermissions = {
   ...EMPRESA_BRONZE_PERMISSIONS,
-  maxFreightsPerMonth: 25,
+  maxFreightsPerMonth: EMPRESA_LIMITS.prataMonthly,
   canUsePriority: true,
   priorityLevel: 2,
   hasHighlightedProfile: true,
@@ -449,10 +457,10 @@ export const PLANS: Record<string, PlanDefinition> = {
     shortName: 'Gratuito',
     price: 0,
     priceFormatted: 'Grátis',
-    description: 'Explore a plataforma durante o período de teste.',
+    description: `Período de teste de ${TRIAL_DURATION_DAYS} dias com até 5 publicações de frete.`,
     recommended: false,
     features: [
-      { text: 'Até 3 publicações de frete/mês', included: true },
+      { text: `Até ${EMPRESA_LIMITS.gratuitoTrialTotal} publicações no trial (${TRIAL_DURATION_DAYS} dias)`, included: true },
       { text: '1 usuário cadastrado', included: true },
       { text: 'Gestão básica', included: true },
       { text: 'Relatórios básicos', included: false },
@@ -474,7 +482,7 @@ export const PLANS: Record<string, PlanDefinition> = {
     description: 'Para empresas que estão começando na plataforma.',
     recommended: false,
     features: [
-      { text: 'Até 15 fretes/mês', included: true },
+      { text: `Até ${EMPRESA_LIMITS.bronzeMonthly} publicações de frete/mês`, included: true },
       { text: '1 usuário cadastrado', included: true },
       { text: 'Gestão básica', included: true },
       { text: 'Busca de motoristas', included: true },
@@ -499,7 +507,7 @@ export const PLANS: Record<string, PlanDefinition> = {
     recommended: true,
     features: [
       { text: 'Tudo do Bronze +', included: true, highlight: true },
-      { text: 'Até 25 fretes/mês', included: true },
+      { text: `Até ${EMPRESA_LIMITS.prataMonthly} publicações de frete/mês`, included: true },
       { text: 'Até 2 usuários', included: true },
       { text: 'Destaque médio dos fretes', included: true },
       { text: 'Prioridade para motoristas Prata', included: true },
@@ -564,6 +572,11 @@ export function getPlan(group: UserGroup, tier: PlanTier): PlanDefinition {
 /** Retorna as permissões de um plano */
 export function getPermissions(group: UserGroup, tier: PlanTier): PlanPermissions {
   return getPlan(group, tier).permissions;
+}
+
+/** Empresa gratuita/trial: limite total no período (como motorista gratuito). Planos pagos: limite mensal. */
+export function isEmpresaGratuitoLifetimeLimit(tier: PlanTier): boolean {
+  return tier === 'gratuito';
 }
 
 /** Retorna o visual de um tier */
