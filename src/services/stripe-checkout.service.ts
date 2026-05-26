@@ -43,4 +43,47 @@ export const StripeCheckoutService = {
       return { url: null, error: 'Não foi possível iniciar o pagamento.' };
     }
   },
+
+  /**
+   * Verifica diretamente na Stripe se há assinatura ativa e força
+   * a ativação do plano no banco via service_role.
+   * Usado como fallback quando o webhook demora ou falha.
+   */
+  async verifySubscription(sessionId?: string, targetTier?: PlanTier): Promise<{
+    activated: boolean;
+    plan?: string;
+    source?: string;
+    error?: string;
+  }> {
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-subscription', {
+        body: { sessionId, targetTier },
+      });
+
+      if (error) {
+        return { activated: false, error: error.message };
+      }
+
+      const payload = data as {
+        activated?: boolean;
+        plan?: string;
+        source?: string;
+        error?: string;
+        message?: string;
+      };
+
+      if (payload?.error) {
+        return { activated: false, error: payload.error };
+      }
+
+      return {
+        activated: payload?.activated ?? false,
+        plan: payload?.plan,
+        source: payload?.source,
+      };
+    } catch (e) {
+      console.error('[StripeCheckout] verifySubscription:', e);
+      return { activated: false, error: 'Erro ao verificar assinatura.' };
+    }
+  },
 };

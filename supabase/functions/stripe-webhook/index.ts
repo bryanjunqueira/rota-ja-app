@@ -79,6 +79,108 @@ async function resolveFromStoredSubscription(
   };
 }
 
+async function enviarEmailConfirmacao(email: string, planName: string, userGroup: string) {
+  const resendKey = Deno.env.get('RESEND_API_KEY');
+  const fromEmail = Deno.env.get('APPROVAL_FROM_EMAIL') ?? 'RotaJa <onboarding@resend.dev>';
+
+  if (!resendKey) {
+    console.warn('RESEND_API_KEY não configurado. Ignorando envio de e-mail.');
+    return;
+  }
+
+  const html = `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #2094f3; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">Rota Já</h1>
+        <p style="color: #718096; margin: 4px 0 0 0; font-size: 14px;">Logística rápida e inteligente</p>
+      </div>
+      
+      <div style="background: linear-gradient(135deg, #2094f3 0%, #1e40af 100%); color: #ffffff; padding: 24px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
+        <span style="background-color: rgba(255, 255, 255, 0.2); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Confirmado</span>
+        <h2 style="margin: 12px 0 4px 0; font-size: 22px; font-weight: 700;">Assinatura Ativada!</h2>
+        <p style="margin: 0; opacity: 0.9; font-size: 15px;">Seu plano <strong style="text-transform: capitalize;">${planName}</strong> já está ativo.</p>
+      </div>
+
+      <div style="margin-bottom: 24px; color: #2d3748; line-height: 1.6;">
+        <p style="margin: 0 0 12px 0; font-size: 16px;">Olá,</p>
+        <p style="margin: 0 0 16px 0; font-size: 15px;">Confirmamos o recebimento do seu pagamento via Stripe. Todos os recursos e limites do seu novo plano foram ativados na sua conta.</p>
+        
+        <div style="background-color: #f7fafc; padding: 16px; border-radius: 8px; border: 1px solid #edf2f7; margin-bottom: 20px;">
+          <h3 style="margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; color: #4a5568; letter-spacing: 0.5px;">Detalhes do Plano</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 6px 0; color: #718096; font-size: 14px;">Plano:</td>
+              <td style="padding: 6px 0; font-weight: bold; text-align: right; color: #2d3748; font-size: 14px; text-transform: capitalize;">${planName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #718096; font-size: 14px;">Tipo de Usuário:</td>
+              <td style="padding: 6px 0; font-weight: bold; text-align: right; color: #2d3748; font-size: 14px; text-transform: capitalize;">${userGroup === 'motorista' ? 'Motorista' : 'Empresa'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #718096; font-size: 14px;">Status da Assinatura:</td>
+              <td style="padding: 6px 0; font-weight: bold; text-align: right; color: #48bb78; font-size: 14px;">Ativo</td>
+            </tr>
+          </table>
+        </div>
+
+        <p style="margin: 0 0 24px 0; font-size: 15px; text-align: center;">Abra o aplicativo RotaJá para começar a aproveitar os recursos agora mesmo!</p>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid #edf2f7; margin: 24px 0;" />
+      
+      <div style="text-align: center; color: #a0aec0; font-size: 12px; line-height: 1.5;">
+        <p style="margin: 0 0 4px 0;">© 2026 RotaJá. Todos os direitos reservados.</p>
+        <p style="margin: 0;">Você está recebendo este e-mail porque realizou uma assinatura no app RotaJá.</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${resendKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [email],
+        subject: `RotaJá: Seu plano ${planName.toUpperCase()} está ativo! 🎉`,
+        html,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`Erro ao enviar e-mail via Resend para ${email}:`, errText);
+
+      // Se falhar (por exemplo, erro 403 de restrição de sandbox do Resend),
+      // tentamos enviar para o e-mail do proprietário da conta cadastrada nos secrets
+      const ownerEmail = Deno.env.get('APP_OWNER_EMAIL');
+      if (ownerEmail && ownerEmail !== email) {
+        console.log(`Tentando enviar cópia sandbox para o e-mail do proprietário: ${ownerEmail}`);
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: [ownerEmail],
+            subject: `[Sandbox Copy] RotaJá: Plano ${planName.toUpperCase()} ativo para ${email}! 🎉`,
+            html,
+          }),
+        });
+      }
+    } else {
+      console.log(`E-mail de confirmação enviado com sucesso para: ${email}`);
+    }
+  } catch (err) {
+    console.error('Exceção ao chamar API Resend:', err);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -186,6 +288,18 @@ Deno.serve(async (req) => {
       if (error) {
         console.error('RPC aplicar_plano_stripe:', error);
         return new Response(error.message, { status: 500 });
+      }
+
+      const rpcPayload = data as { success?: boolean; new_activation?: boolean };
+      if (rpcPayload?.success && rpcPayload?.new_activation) {
+        // Busca o email do usuário via Auth Admin API para enviar o email de confirmação
+        supabase.auth.admin.getUserById(userId).then(({ data: { user: authUser }, error: getUserError }) => {
+          if (!getUserError && authUser?.email) {
+            enviarEmailConfirmacao(authUser.email, tier, group).catch(console.error);
+          } else {
+            console.error('Erro ao obter email do usuario para webhook:', getUserError);
+          }
+        }).catch(console.error);
       }
 
       console.log('Plano aplicado:', data);

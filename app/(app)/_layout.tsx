@@ -3,7 +3,7 @@
  * Integração de PagerView para animação de deslizamento entre abas.
  */
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,11 +32,12 @@ function NotifBadge({ count }: { count: number }) {
 }
 
 export default function AppLayout() {
-  const { user, role } = useAuth();
+  const { user, role, motorista, empresa, logout, refreshProfile } = useAuth();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   const pagerRef = useRef<PagerView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -90,6 +91,84 @@ export default function AppLayout() {
       router.navigate(`/(app)/${ROUTES[index]}`);
     }
   };
+
+  const status = role === 'motorista' ? motorista?.status : role === 'empresa' ? empresa?.status : 'pendente';
+  const isApproved = status === 'aprovado';
+
+  // Se a conta não estiver aprovada (pendente ou reprovada), bloqueia o app inteiro
+  if (!isApproved) {
+    const isReproved = status === 'reprovado' || status === 'rejeitado' || status === 'rejeitada';
+    
+    return (
+      <View style={[blockedStyles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <StatusBar style="dark" translucent />
+        
+        <View style={blockedStyles.content}>
+          <View style={blockedStyles.illustrationContainer}>
+            <View style={[blockedStyles.iconBg, isReproved ? blockedStyles.iconBgError : blockedStyles.iconBgWarning]}>
+              <Ionicons 
+                name={isReproved ? "close-circle" : "hourglass"} 
+                size={48} 
+                color={isReproved ? COLORS.error : COLORS.warning} 
+              />
+            </View>
+          </View>
+
+          <Text style={blockedStyles.title}>
+            {isReproved ? 'Acesso Indisponível' : 'Conta em Análise'}
+          </Text>
+          
+          <Text style={blockedStyles.description}>
+            {isReproved 
+              ? 'Infelizmente seu cadastro não atende aos requisitos da plataforma ou foi reprovado. Entre em contato com nosso suporte para mais detalhes.'
+              : 'Seus dados foram enviados e estão sendo revisados pela nossa equipe administrativa. Você terá acesso total ao aplicativo assim que seu cadastro for aprovado.'}
+          </Text>
+
+          <View style={blockedStyles.statusBadge}>
+            <Text style={blockedStyles.statusText}>
+              Status atual: <Text style={blockedStyles.statusTextBold}>{isReproved ? 'Reprovado' : 'Aguardando aprovação'}</Text>
+            </Text>
+          </View>
+
+          <View style={blockedStyles.buttonContainer}>
+            <TouchableOpacity 
+              style={blockedStyles.refreshButton}
+              onPress={async () => {
+                setRefreshing(true);
+                try {
+                  await refreshProfile();
+                } catch {}
+                setRefreshing(false);
+              }}
+              disabled={refreshing}
+              activeOpacity={0.8}
+            >
+              {refreshing ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <>
+                  <Ionicons name="refresh" size={20} color={COLORS.white} />
+                  <Text style={blockedStyles.refreshButtonText}>Atualizar Status</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={blockedStyles.logoutButton}
+              onPress={async () => {
+                await logout();
+                router.replace('/(auth)/landing');
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="log-out-outline" size={20} color={COLORS.primary} />
+              <Text style={blockedStyles.logoutButtonText}>Sair da Conta</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   const cargasTitle = role === 'empresa' ? 'Fretes' : 'Cargas';
 
@@ -197,3 +276,114 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: COLORS.white, fontSize: 10, fontWeight: '700' },
 });
+
+const blockedStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  content: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 340,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.08,
+        shadowRadius: 24,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  illustrationContainer: {
+    marginBottom: 24,
+  },
+  iconBg: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconBgWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+  },
+  iconBgError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  description: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  statusBadge: {
+    backgroundColor: COLORS.surfaceVariant,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 32,
+  },
+  statusText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  statusTextBold: {
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
+  },
+  buttonContainer: {
+    width: '100%',
+    gap: 12,
+  },
+  refreshButton: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+  },
+  refreshButtonText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  logoutButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    flexDirection: 'row',
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+  },
+  logoutButtonText: {
+    color: COLORS.primary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+});
+

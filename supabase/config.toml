@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.approve-registration]
 verify_jwt = false
+
+[functions.verify-subscription]
+verify_jwt = false

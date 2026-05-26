@@ -19,6 +19,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { AssinaturasService } from '@/services/assinaturas.service';
 import { StripeCheckoutService } from '@/services/stripe-checkout.service';
 import { ENV } from '@/config/env';
+import * as ExpoLinking from 'expo-linking';
 import { COLORS, BORDER_RADIUS, SPACING, SHADOWS, FONT_SIZES } from '@/config/theme';
 import {
   getPlan,
@@ -38,7 +39,7 @@ export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { refreshSubscription } = useSubscription();
-  const params = useLocalSearchParams<{ planId: string; tier: string; group: string; stripeStatus?: string }>();
+  const params = useLocalSearchParams<{ planId: string; tier: string; group: string; stripeStatus?: string; sessionId?: string }>();
 
   const tier = (params.tier || 'bronze') as PlanTier;
   const group = (params.group || 'motorista') as UserGroup;
@@ -50,6 +51,12 @@ export default function CheckoutScreen() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showSandbox, setShowSandbox] = useState(false);
   const [stripeReturnHandled, setStripeReturnHandled] = useState(false);
+
+  // Stripe verification states
+  const [verifyingStripe, setVerifyingStripe] = useState(false);
+  const [stripeSuccessText, setStripeSuccessText] = useState('Estamos confirmando o seu pagamento...');
+  const [showVerifyManualBtn, setShowVerifyManualBtn] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
 
   // Cartão form (sandbox — aceita qualquer dado)
   const [cardNumber, setCardNumber] = useState('');
@@ -68,6 +75,15 @@ export default function CheckoutScreen() {
         { key: 'boleto' as PaymentMethod, icon: 'barcode-outline', label: 'Boleto' },
       ];
 
+  const isMounted = React.useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (ENV.PAYMENTS_MODE === 'stripe' && paymentMethod === 'pix') {
       setPaymentMethod('cartao');
@@ -82,51 +98,109 @@ export default function CheckoutScreen() {
     setStripeReturnHandled(true);
 
     if (params.stripeStatus === 'cancel') {
-      Alert.alert('Pagamento cancelado', 'Voce voltou sem finalizar a assinatura.');
+      Alert.alert('Pagamento cancelado', 'Você voltou sem finalizar a assinatura.');
       return;
     }
 
     if (params.stripeStatus !== 'success') return;
 
-    let active = true;
-
     (async () => {
       setProcessing(true);
+      setVerifyingStripe(true);
+      setShowVerifyManualBtn(false);
+      setVerificationError(null);
       let activated = false;
 
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        const result = await AssinaturasService.verificarStatus(user.id);
-        await refreshSubscription();
+      // 10 tentativas com 3 segundos de intervalo = 30 segundos no total
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        if (!isMounted.current) break;
+        setStripeSuccessText(`Confirmando pagamento com a Stripe...\n(Tentativa ${attempt + 1} de 10)`);
 
-        if (result.data?.status_assinatura === 'ativo' && result.data?.tipo_plano === tier) {
-          activated = true;
-          break;
+        try {
+          // 1. Tenta forçar a sincronização/verificação direta com a Stripe via Edge Function
+          const checkResult = await StripeCheckoutService.verifySubscription(params.sessionId, tier);
+          if (checkResult.activated) {
+            activated = true;
+            break;
+          }
+
+          // 2. Fallback de verificação local do status do banco
+          const result = await AssinaturasService.verificarStatus(user.id);
+
+          if (result.data?.status_assinatura === 'ativo' && result.data?.tipo_plano === tier) {
+            activated = true;
+            break;
+          }
+        } catch (err) {
+          console.error('[Checkout] Erro na tentativa de verificação:', err);
         }
 
-        await sleep(1500);
+        await sleep(3000);
       }
 
-      if (!active) return;
+      if (!isMounted.current) return;
+
+      // Atualiza o estado global de assinatura após verificar
+      try {
+        await refreshSubscription();
+      } catch (err) {
+        console.error('[Checkout] Erro ao sincronizar estado da assinatura:', err);
+      }
+
       setProcessing(false);
 
       if (activated) {
+        setVerifyingStripe(false);
         setShowSuccess(true);
         setTimeout(() => {
-          setShowSuccess(false);
-          router.replace('/(app)/dashboard');
+          if (isMounted.current) {
+            setShowSuccess(false);
+            router.replace('/(app)/dashboard');
+          }
         }, 2500);
       } else {
-        Alert.alert(
-          'Aguardando confirmacao',
-          'O pagamento foi iniciado na Stripe. Assim que o webhook confirmar, seu plano sera ativado automaticamente.'
-        );
+        setStripeSuccessText('O pagamento foi iniciado na Stripe, mas a confirmação automática está demorando.');
+        setShowVerifyManualBtn(true);
       }
     })();
+  }, [params.stripeStatus, params.sessionId, refreshSubscription, router, stripeReturnHandled, tier, user?.id]);
 
-    return () => {
-      active = false;
-    };
-  }, [params.stripeStatus, refreshSubscription, router, stripeReturnHandled, tier, user?.id]);
+  const handleManualVerification = async () => {
+    if (!user?.id) return;
+    setProcessing(true);
+    setVerificationError(null);
+    setStripeSuccessText('Forçando verificação com a Stripe...');
+
+    try {
+      const checkResult = await StripeCheckoutService.verifySubscription(params.sessionId, tier);
+      await refreshSubscription();
+
+      if (checkResult.activated) {
+        setVerifyingStripe(false);
+        setShowSuccess(true);
+        setTimeout(() => {
+          if (isMounted.current) {
+            setShowSuccess(false);
+            router.replace('/(app)/dashboard');
+          }
+        }, 2500);
+      } else {
+        setVerificationError(
+          checkResult.error || 
+          'A assinatura ainda não foi confirmada pela Stripe. Se você já pagou, aguarde alguns instantes e tente novamente.'
+        );
+        setStripeSuccessText('Não foi possível confirmar a ativação ainda.');
+        setShowVerifyManualBtn(true);
+      }
+    } catch (err) {
+      console.error('[Checkout] Erro na verificação manual:', err);
+      setVerificationError('Erro ao tentar verificar. Tente novamente em instantes.');
+    } finally {
+      if (isMounted.current) {
+        setProcessing(false);
+      }
+    }
+  };
 
   const handlePay = async (scenario: SandboxScenario = 'aprovado') => {
     if (!user?.id) return;
@@ -144,13 +218,26 @@ export default function CheckoutScreen() {
         }
 
         const metodoLabel = paymentMethod === 'boleto' ? 'Boleto' : 'Cartão';
-        const returnParams =
-          `planId=${encodeURIComponent(plan.id)}` +
-          `&tier=${encodeURIComponent(tier)}` +
-          `&group=${encodeURIComponent(group)}`;
+        const successUrl = ExpoLinking.createURL('checkout', {
+          queryParams: {
+            stripeStatus: 'success',
+            sessionId: '{CHECKOUT_SESSION_ID}',
+            planId: plan.id,
+            tier: tier,
+            group: group,
+          },
+        });
+        const cancelUrl = ExpoLinking.createURL('checkout', {
+          queryParams: {
+            stripeStatus: 'cancel',
+            planId: plan.id,
+            tier: tier,
+            group: group,
+          },
+        });
         const stripe = await StripeCheckoutService.criarSessaoCheckout(tier, group, {
-          successUrl: `rotaja://checkout?stripeStatus=success&${returnParams}`,
-          cancelUrl: `rotaja://checkout?stripeStatus=cancel&${returnParams}`,
+          successUrl,
+          cancelUrl,
           metodoPagamento: paymentMethod,
           amountCents: plan.price,
         });
@@ -518,6 +605,71 @@ export default function CheckoutScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Stripe Verification Modal */}
+      <Modal visible={verifyingStripe} animationType="fade" transparent statusBarTranslucent>
+        <View style={styles.successOverlay}>
+          <View style={styles.successCard}>
+            {showVerifyManualBtn ? (
+              <View style={[styles.warningIcon, { backgroundColor: '#FEF3C7' }]}>
+                <Ionicons name="alert-circle" size={48} color="#D97706" />
+              </View>
+            ) : (
+              <View style={styles.loadingSpinnerContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} style={{ transform: [{ scale: 1.2 }] }} />
+              </View>
+            )}
+
+            <Text style={styles.successTitle}>
+              {showVerifyManualBtn ? 'Aguardando Confirmação' : 'Confirmando Plano'}
+            </Text>
+
+            <Text style={[styles.successMessage, { fontSize: 14, marginVertical: 12 }]}>
+              {stripeSuccessText}
+            </Text>
+
+            {verificationError && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorBoxText}>{verificationError}</Text>
+              </View>
+            )}
+
+            {showVerifyManualBtn ? (
+              <View style={styles.modalBtnContainer}>
+                <TouchableOpacity
+                  style={styles.verifyManualBtn}
+                  onPress={handleManualVerification}
+                  disabled={processing}
+                >
+                  {processing ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="refresh" size={18} color="#fff" style={{ marginRight: 6 }} />
+                      <Text style={styles.verifyManualBtnText}>Verificar Novamente</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.closeModalBtn}
+                  onPress={() => {
+                    setVerifyingStripe(false);
+                    router.replace('/(app)/dashboard');
+                  }}
+                  disabled={processing}
+                >
+                  <Text style={styles.closeModalBtnText}>Ir para Dashboard</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ marginTop: 8 }}>
+                <PremiumBadge tier={tier} size="lg" showLabel />
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -670,5 +822,69 @@ const styles = StyleSheet.create({
   successMessage: {
     fontSize: 15, color: COLORS.textSecondary, textAlign: 'center',
     lineHeight: 22, marginBottom: 24,
+  },
+  warningIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  loadingSpinnerContainer: {
+    width: 88,
+    height: 88,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  errorBox: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    width: '100%',
+    marginBottom: 16,
+  },
+  errorBoxText: {
+    color: '#B91C1C',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  modalBtnContainer: {
+    width: '100%',
+    gap: 10,
+    marginTop: 8,
+  },
+  verifyManualBtn: {
+    backgroundColor: COLORS.primary,
+    height: 50,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    ...SHADOWS.sm,
+  },
+  verifyManualBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  closeModalBtn: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  closeModalBtnText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

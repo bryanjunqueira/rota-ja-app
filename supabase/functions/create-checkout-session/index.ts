@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
       success_url: successUrl ?? 'rotaja://checkout/success',
       cancel_url: cancelUrl ?? 'rotaja://checkout/cancel',
       client_reference_id: user.id,
+      customer_email: user.email || undefined,
       metadata: {
         user_id: user.id,
         plan_tier: tier,

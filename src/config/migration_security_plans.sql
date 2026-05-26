@@ -492,6 +492,201 @@ BEGIN
   PERFORM public.assinatura_set_authoritative();
   UPDATE assinaturas SET
     tipo_plano = 'gratuito',
+$$;
+
+-- ── 6. RPC: processar pagamento (sandbox ou confirmação interna) ──
+CREATE OR REPLACE FUNCTION public.processar_assinatura_pagamento(
+  p_novo_plano TEXT,
+  p_metodo_pagamento TEXT DEFAULT 'cartao',
+  p_cenario TEXT DEFAULT 'aprovado'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_row assinaturas%ROWTYPE;
+  v_agora TIMESTAMPTZ := now();
+  v_fim TIMESTAMPTZ;
+  v_acao TEXT;
+  v_plano_anterior TEXT;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Não autenticado';
+  END IF;
+
+  IF p_novo_plano NOT IN ('gratuito', 'bronze', 'prata', 'ouro') THEN
+    RAISE EXCEPTION 'Plano inválido';
+  END IF;
+
+  SELECT * INTO v_row FROM assinaturas WHERE user_id = v_uid FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Assinatura não encontrada';
+  END IF;
+
+  PERFORM public.assinatura_set_authoritative();
+
+  IF p_cenario = 'aprovado' THEN
+    v_fim := v_agora + interval '1 month';
+    v_plano_anterior := v_row.tipo_plano;
+    v_acao := CASE
+      WHEN p_novo_plano = v_plano_anterior THEN 'ativacao'
+      WHEN (CASE p_novo_plano WHEN 'bronze' THEN 1 WHEN 'prata' THEN 2 WHEN 'ouro' THEN 3 ELSE 0 END)
+         > (CASE v_plano_anterior WHEN 'bronze' THEN 1 WHEN 'prata' THEN 2 WHEN 'ouro' THEN 3 ELSE 0 END)
+      THEN 'upgrade'
+      ELSE 'downgrade'
+    END;
+
+    UPDATE assinaturas SET
+      tipo_plano = p_novo_plano,
+      status_assinatura = 'ativo',
+      status_pagamento = 'aprovado',
+      metodo_pagamento = p_metodo_pagamento,
+      assinatura_inicio = v_agora,
+      assinatura_fim = v_fim,
+      ultimo_pagamento = v_agora,
+      proximo_pagamento = v_fim,
+      historico_planos = COALESCE(historico_planos, '[]'::jsonb) || jsonb_build_array(
+        jsonb_build_object('plano', p_novo_plano, 'data', v_agora, 'acao', v_acao)
+      )
+    WHERE user_id = v_uid
+    RETURNING * INTO v_row;
+
+    PERFORM public.assinatura_clear_authoritative();
+    RETURN jsonb_build_object('success', true, 'data', to_jsonb(v_row));
+
+  ELSIF p_cenario = 'recusado' THEN
+    UPDATE assinaturas SET
+      status_pagamento = 'recusado',
+      historico_planos = COALESCE(historico_planos, '[]'::jsonb) || jsonb_build_array(
+        jsonb_build_object('plano', p_novo_plano, 'data', v_agora, 'acao', 'pagamento_recusado')
+      )
+    WHERE user_id = v_uid
+    RETURNING * INTO v_row;
+
+    PERFORM public.assinatura_clear_authoritative();
+    RETURN jsonb_build_object('success', false, 'error', 'Pagamento recusado pela operadora.', 'data', to_jsonb(v_row));
+
+  ELSIF p_cenario = 'falha_pagamento' THEN
+    UPDATE assinaturas SET
+      status_assinatura = 'inadimplente',
+      status_pagamento = 'recusado',
+      historico_planos = COALESCE(historico_planos, '[]'::jsonb) || jsonb_build_array(
+        jsonb_build_object('plano', v_row.tipo_plano, 'data', v_agora, 'acao', 'falha_pagamento')
+      )
+    WHERE user_id = v_uid
+    RETURNING * INTO v_row;
+
+    PERFORM public.assinatura_clear_authoritative();
+    RETURN jsonb_build_object('success', false, 'error', 'Falha no processamento do pagamento.', 'data', to_jsonb(v_row));
+  END IF;
+
+  PERFORM public.assinatura_clear_authoritative();
+  RAISE EXCEPTION 'Cenário de pagamento inválido';
+END;
+$$;
+
+-- ── 7. RPC: cancelar, renovar, simular expiração ──
+CREATE OR REPLACE FUNCTION public.cancelar_minha_assinatura()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_row assinaturas%ROWTYPE;
+  v_agora TIMESTAMPTZ := now();
+  v_plano_anterior TEXT;
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'Não autenticado'; END IF;
+
+  SELECT tipo_plano INTO v_plano_anterior FROM assinaturas WHERE user_id = v_uid;
+
+  PERFORM public.assinatura_set_authoritative();
+  UPDATE assinaturas SET
+    tipo_plano = 'gratuito',
+    status_assinatura = 'cancelado',
+    status_pagamento = 'cancelado',
+    renovacao_automatica = false,
+    historico_planos = COALESCE(historico_planos, '[]'::jsonb) || jsonb_build_array(
+      jsonb_build_object('plano', v_plano_anterior, 'data', v_agora, 'acao', 'cancelado')
+    )
+  WHERE user_id = v_uid
+  RETURNING * INTO v_row;
+  PERFORM public.assinatura_clear_authoritative();
+
+  RETURN jsonb_build_object('success', true, 'data', to_jsonb(v_row));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.renovar_minha_assinatura()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_row assinaturas%ROWTYPE;
+  v_agora TIMESTAMPTZ := now();
+  v_fim TIMESTAMPTZ;
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'Não autenticado'; END IF;
+
+  SELECT * INTO v_row FROM assinaturas WHERE user_id = v_uid;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Assinatura não encontrada.');
+  END IF;
+
+  IF NOT v_row.renovacao_automatica THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Renovação automática desativada.');
+  END IF;
+
+  v_fim := v_agora + interval '1 month';
+
+  PERFORM public.assinatura_set_authoritative();
+  UPDATE assinaturas SET
+    status_assinatura = 'ativo',
+    status_pagamento = 'aprovado',
+    assinatura_inicio = v_agora,
+    assinatura_fim = v_fim,
+    ultimo_pagamento = v_agora,
+    proximo_pagamento = v_fim,
+    historico_planos = COALESCE(historico_planos, '[]'::jsonb) || jsonb_build_array(
+      jsonb_build_object('plano', v_row.tipo_plano, 'data', v_agora, 'acao', 'renovacao')
+    )
+  WHERE user_id = v_uid
+  RETURNING * INTO v_row;
+  PERFORM public.assinatura_clear_authoritative();
+
+  RETURN jsonb_build_object('success', true, 'data', to_jsonb(v_row));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.simular_expiracao_assinatura()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_row assinaturas%ROWTYPE;
+  v_agora TIMESTAMPTZ := now();
+  v_plano_anterior TEXT;
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'Não autenticado'; END IF;
+
+  SELECT tipo_plano INTO v_plano_anterior FROM assinaturas WHERE user_id = v_uid;
+
+  PERFORM public.assinatura_set_authoritative();
+  UPDATE assinaturas SET
+    tipo_plano = 'gratuito',
     status_assinatura = 'expirado',
     status_pagamento = 'pendente',
     historico_planos = COALESCE(historico_planos, '[]'::jsonb) || jsonb_build_array(
@@ -506,7 +701,7 @@ END;
 $$;
 
 -- ── 8. RPC: aplicar plano via webhook Stripe (service_role apenas) ──
-DROP FUNCTION IF EXISTS public.aplicar_plano_stripe(UUID, TEXT, TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.aplicar_plano_stripe(UUID, TEXT, TEXT, TEXT, TEXT, TEXT);
 
 CREATE OR REPLACE FUNCTION public.aplicar_plano_stripe(
   p_user_id UUID,
@@ -525,6 +720,10 @@ DECLARE
   v_row assinaturas%ROWTYPE;
   v_agora TIMESTAMPTZ := now();
   v_fim TIMESTAMPTZ := v_agora + interval '1 month';
+  v_old_status TEXT;
+  v_old_sub_id TEXT;
+  v_old_plano TEXT;
+  v_is_new_activation BOOLEAN := false;
 BEGIN
   IF (auth.jwt() ->> 'role') IS DISTINCT FROM 'service_role' THEN
     RAISE EXCEPTION 'Acesso negado';
@@ -536,6 +735,21 @@ BEGIN
 
   IF p_tipo_usuario IS NOT NULL AND p_tipo_usuario NOT IN ('motorista', 'empresa') THEN
     RAISE EXCEPTION 'Tipo de usuario invalido';
+  END IF;
+
+  -- Verifica o estado anterior
+  SELECT status_assinatura, stripe_subscription_id, tipo_plano
+  INTO v_old_status, v_old_sub_id, v_old_plano
+  FROM assinaturas
+  WHERE user_id = p_user_id;
+
+  IF NOT FOUND THEN
+    v_is_new_activation := true;
+  ELSIF COALESCE(v_old_status, '') IS DISTINCT FROM 'ativo'
+        OR COALESCE(v_old_sub_id, '') IS DISTINCT FROM COALESCE(p_stripe_subscription_id, '')
+        OR COALESCE(v_old_plano, '') IS DISTINCT FROM p_novo_plano
+  THEN
+    v_is_new_activation := true;
   END IF;
 
   PERFORM public.assinatura_set_authoritative();
@@ -592,12 +806,6 @@ BEGIN
   END IF;
 
   PERFORM public.assinatura_clear_authoritative();
-  RETURN jsonb_build_object('success', true, 'data', to_jsonb(v_row));
-END;
-$$;
-
--- ── 9. Permissões das RPCs ──
-GRANT EXECUTE ON FUNCTION public.sync_assinatura_status() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.processar_assinatura_pagamento(TEXT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.cancelar_minha_assinatura() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.renovar_minha_assinatura() TO authenticated;
