@@ -6,6 +6,10 @@ import { supabase } from '@/lib/supabase';
 import type { PlanTier, UserGroup, PaymentMethod } from '@/config/plans';
 
 export const StripeCheckoutService = {
+  /**
+   * Cria uma sessão de checkout na Stripe.
+   * Retorna a URL para redirecionar o usuário E o sessionId para verificação posterior.
+   */
   async criarSessaoCheckout(
     tier: PlanTier,
     group: UserGroup,
@@ -15,7 +19,7 @@ export const StripeCheckoutService = {
       metodoPagamento?: PaymentMethod;
       amountCents?: number;
     }
-  ): Promise<{ url: string | null; error?: string }> {
+  ): Promise<{ url: string | null; sessionId?: string; error?: string }> {
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout-session', {
         body: {
@@ -32,12 +36,15 @@ export const StripeCheckoutService = {
         return { url: null, error: error.message };
       }
 
-      const payload = data as { url?: string; error?: string };
+      const payload = data as { url?: string; sessionId?: string; error?: string };
       if (payload?.error) {
         return { url: null, error: payload.error };
       }
 
-      return { url: payload?.url ?? null };
+      return {
+        url: payload?.url ?? null,
+        sessionId: payload?.sessionId ?? undefined,
+      };
     } catch (e) {
       console.error('[StripeCheckout]', e);
       return { url: null, error: 'Não foi possível iniciar o pagamento.' };

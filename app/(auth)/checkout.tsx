@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/hooks/useAuth';
 import { useSubscription } from '@/hooks/useSubscription';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AssinaturasService } from '@/services/assinaturas.service';
 import { StripeCheckoutService } from '@/services/stripe-checkout.service';
 import { ENV } from '@/config/env';
@@ -51,12 +52,27 @@ export default function CheckoutScreen() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showSandbox, setShowSandbox] = useState(false);
   const [stripeReturnHandled, setStripeReturnHandled] = useState(false);
+  const [storedSessionId, setStoredSessionId] = useState<string | null>(null);
 
   // Stripe verification states
   const [verifyingStripe, setVerifyingStripe] = useState(false);
   const [stripeSuccessText, setStripeSuccessText] = useState('Estamos confirmando o seu pagamento...');
   const [showVerifyManualBtn, setShowVerifyManualBtn] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+
+  // Carrega o sessionId salvo anteriormente
+  useEffect(() => {
+    if (user?.id) {
+      AsyncStorage.getItem(`@checkout_session_${user.id}`)
+        .then((val) => {
+          if (val) {
+            console.log('[Checkout] Recuperado sessionId local:', val);
+            setStoredSessionId(val);
+          }
+        })
+        .catch((err) => console.error('[Checkout] Erro ao ler sessionId do AsyncStorage:', err));
+    }
+  }, [user?.id]);
 
   // Cartão form (sandbox — aceita qualquer dado)
   const [cardNumber, setCardNumber] = useState('');
@@ -111,6 +127,14 @@ export default function CheckoutScreen() {
       setVerificationError(null);
       let activated = false;
 
+      // Recupera o sessionId correto
+      let resolvedSessionId = params.sessionId;
+      if (!resolvedSessionId || resolvedSessionId === '{CHECKOUT_SESSION_ID}') {
+        resolvedSessionId = storedSessionId || undefined;
+      }
+
+      console.log('[Checkout] Iniciando verificação automática com sessionId:', resolvedSessionId);
+
       // 10 tentativas com 3 segundos de intervalo = 30 segundos no total
       for (let attempt = 0; attempt < 10; attempt += 1) {
         if (!isMounted.current) break;
@@ -118,7 +142,7 @@ export default function CheckoutScreen() {
 
         try {
           // 1. Tenta forçar a sincronização/verificação direta com a Stripe via Edge Function
-          const checkResult = await StripeCheckoutService.verifySubscription(params.sessionId, tier);
+          const checkResult = await StripeCheckoutService.verifySubscription(resolvedSessionId, tier);
           if (checkResult.activated) {
             activated = true;
             break;
@@ -150,6 +174,11 @@ export default function CheckoutScreen() {
       setProcessing(false);
 
       if (activated) {
+        if (user?.id) {
+          AsyncStorage.removeItem(`@checkout_session_${user.id}`).catch((err) =>
+            console.error('[Checkout] Erro ao remover sessionId do AsyncStorage:', err)
+          );
+        }
         setVerifyingStripe(false);
         setShowSuccess(true);
         setTimeout(() => {
@@ -163,7 +192,7 @@ export default function CheckoutScreen() {
         setShowVerifyManualBtn(true);
       }
     })();
-  }, [params.stripeStatus, params.sessionId, refreshSubscription, router, stripeReturnHandled, tier, user?.id]);
+  }, [params.stripeStatus, params.sessionId, storedSessionId, refreshSubscription, router, stripeReturnHandled, tier, user?.id]);
 
   const handleManualVerification = async () => {
     if (!user?.id) return;
@@ -171,11 +200,23 @@ export default function CheckoutScreen() {
     setVerificationError(null);
     setStripeSuccessText('Forçando verificação com a Stripe...');
 
+    let resolvedSessionId = params.sessionId;
+    if (!resolvedSessionId || resolvedSessionId === '{CHECKOUT_SESSION_ID}') {
+      resolvedSessionId = storedSessionId || undefined;
+    }
+
+    console.log('[Checkout] Iniciando verificação manual com sessionId:', resolvedSessionId);
+
     try {
-      const checkResult = await StripeCheckoutService.verifySubscription(params.sessionId, tier);
+      const checkResult = await StripeCheckoutService.verifySubscription(resolvedSessionId, tier);
       await refreshSubscription();
 
       if (checkResult.activated) {
+        if (user?.id) {
+          AsyncStorage.removeItem(`@checkout_session_${user.id}`).catch((err) =>
+            console.error('[Checkout] Erro ao remover sessionId do AsyncStorage:', err)
+          );
+        }
         setVerifyingStripe(false);
         setShowSuccess(true);
         setTimeout(() => {
@@ -218,23 +259,15 @@ export default function CheckoutScreen() {
         }
 
         const metodoLabel = paymentMethod === 'boleto' ? 'Boleto' : 'Cartão';
-        const successUrl = ExpoLinking.createURL('checkout', {
-          queryParams: {
-            stripeStatus: 'success',
-            sessionId: '{CHECKOUT_SESSION_ID}',
-            planId: plan.id,
-            tier: tier,
-            group: group,
-          },
-        });
-        const cancelUrl = ExpoLinking.createURL('checkout', {
-          queryParams: {
-            stripeStatus: 'cancel',
-            planId: plan.id,
-            tier: tier,
-            group: group,
-          },
-        });
+        const baseCheckoutUrl = ExpoLinking.createURL('checkout');
+        
+        // Evita que o ExpoLinking encodifique o placeholder da Stripe {CHECKOUT_SESSION_ID} como %7BCHECKOUT_SESSION_ID%7D.
+        // Se encodificar, a Stripe não reconhece e não substitui pelo ID real da sessão de checkout.
+        const successSeparator = baseCheckoutUrl.includes('?') ? '&' : '?';
+        const successUrl = `${baseCheckoutUrl}${successSeparator}stripeStatus=success&sessionId={CHECKOUT_SESSION_ID}&planId=${plan.id}&tier=${tier}&group=${group}`;
+        
+        const cancelSeparator = baseCheckoutUrl.includes('?') ? '&' : '?';
+        const cancelUrl = `${baseCheckoutUrl}${cancelSeparator}stripeStatus=cancel&planId=${plan.id}&tier=${tier}&group=${group}`;
         const stripe = await StripeCheckoutService.criarSessaoCheckout(tier, group, {
           successUrl,
           cancelUrl,
@@ -245,6 +278,18 @@ export default function CheckoutScreen() {
           Alert.alert('Erro', stripe.error || 'Não foi possível abrir o pagamento Stripe.');
           return;
         }
+
+        // Salva o sessionId localmente antes de abrir o navegador
+        if (stripe.sessionId) {
+          try {
+            await AsyncStorage.setItem(`@checkout_session_${user.id}`, stripe.sessionId);
+            setStoredSessionId(stripe.sessionId);
+            console.log('[Checkout] SessionId salvo localmente:', stripe.sessionId);
+          } catch (err) {
+            console.error('[Checkout] Erro ao salvar sessionId no AsyncStorage:', err);
+          }
+        }
+
         await Linking.openURL(stripe.url);
         Alert.alert(
           `Pagamento via ${metodoLabel}`,

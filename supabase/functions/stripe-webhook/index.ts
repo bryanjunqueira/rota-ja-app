@@ -276,6 +276,19 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Busca a assinatura atual do banco para verificar se mudou
+      let oldSubscriptionId: string | null = null;
+      try {
+        const { data: currentAssinatura } = await supabase
+          .from('assinaturas')
+          .select('stripe_subscription_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        oldSubscriptionId = currentAssinatura?.stripe_subscription_id ?? null;
+      } catch (err) {
+        console.error('Erro ao buscar assinatura atual para verificar upgrade:', err);
+      }
+
       const { data, error } = await supabase.rpc('aplicar_plano_stripe', {
         p_user_id: userId,
         p_novo_plano: tier,
@@ -291,6 +304,22 @@ Deno.serve(async (req) => {
       }
 
       const rpcPayload = data as { success?: boolean; new_activation?: boolean };
+
+      // Se a assinatura mudou (ex: upgrade), cancela a antiga na Stripe para evitar cobrança dupla
+      if (
+        rpcPayload?.success &&
+        oldSubscriptionId &&
+        subscriptionId &&
+        oldSubscriptionId !== subscriptionId
+      ) {
+        try {
+          console.log(`Cancelando assinatura antiga ${oldSubscriptionId} na Stripe devido a upgrade/mudança...`);
+          await stripe.subscriptions.cancel(oldSubscriptionId);
+        } catch (err) {
+          console.error(`Erro ao cancelar assinatura antiga ${oldSubscriptionId}:`, err);
+        }
+      }
+
       if (rpcPayload?.success && rpcPayload?.new_activation) {
         // Busca o email do usuário via Auth Admin API para enviar o email de confirmação
         supabase.auth.admin.getUserById(userId).then(({ data: { user: authUser }, error: getUserError }) => {

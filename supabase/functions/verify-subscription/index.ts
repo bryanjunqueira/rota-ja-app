@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
     let tier: string | null = null;
     let group: string | null = assinatura?.tipo_usuario ?? null;
     let customerId: string | null = assinatura?.stripe_customer_id ?? null;
-    let subscriptionId: string | null = assinatura?.stripe_subscription_id ?? null;
+    let subscriptionId: string | null = null;
 
     // 0️⃣ Se temos sessionId enviado pelo app, busca a Checkout Session
     if (sessionId) {
@@ -219,10 +219,14 @@ Deno.serve(async (req) => {
         // Verifica se a sessão pertence a este usuário por segurança
         const sessionUserId = session.client_reference_id ?? session.metadata?.user_id;
         if (sessionUserId === user.id && (session.payment_status === 'paid' || session.status === 'complete')) {
-          customerId = customerId ?? (typeof session.customer === 'string' ? session.customer : (session.customer as any)?.id ?? null);
-          subscriptionId = subscriptionId ?? (typeof session.subscription === 'string' ? session.subscription : (session.subscription as any)?.id ?? null);
-          tier = (session.metadata?.plan_tier as string | undefined);
-          group = group ?? (session.metadata?.user_group as string | undefined);
+          const sessionCustId = typeof session.customer === 'string' ? session.customer : (session.customer as any)?.id ?? null;
+          const sessionSubId = typeof session.subscription === 'string' ? session.subscription : (session.subscription as any)?.id ?? null;
+          
+          if (sessionCustId) customerId = sessionCustId;
+          if (sessionSubId) subscriptionId = sessionSubId;
+          
+          tier = (session.metadata?.plan_tier as string | undefined) ?? null;
+          group = (session.metadata?.user_group as string | undefined) ?? group;
           
           console.log(`Checkout Session válida encontrada! Customer: ${customerId}, Sub: ${subscriptionId}, Tier: ${tier}`);
         } else {
@@ -238,52 +242,110 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 1️⃣ Se já temos o subscription ID, verifica diretamente
+    // 1️⃣ Se já determinamos uma subscriptionId da Checkout Session, verifica ela diretamente na Stripe
     if (subscriptionId) {
       try {
+        console.log(`Verificando assinatura da session na Stripe: ${subscriptionId}`);
         const sub = await stripe.subscriptions.retrieve(subscriptionId);
         if (sub.status === 'active' || sub.status === 'trialing') {
           const priceId = sub.items.data[0]?.price?.id ?? null;
-          tier = (sub.metadata?.plan_tier as string | undefined) ?? (priceId ? tierMap[priceId] : null);
+          tier = tier ?? (sub.metadata?.plan_tier as string | undefined) ?? (priceId ? tierMap[priceId] : null);
           group = group ?? (sub.metadata?.user_group as string | undefined) ?? (priceId ? groupMap[priceId] : null);
-          customerId = customerId ?? (typeof sub.customer === 'string' ? sub.customer : (sub.customer as any)?.id ?? null);
+        } else {
+          console.warn(`Assinatura ${subscriptionId} da session não está ativa: ${sub.status}`);
+          subscriptionId = null;
+          tier = null;
         }
-      } catch (_) { /* subscription pode não existir ainda */ }
-    }
-
-    // 2️⃣ Se temos customer_id mas ainda sem tier, lista assinaturas ativas
-    if (!tier && customerId) {
-      const subs = await stripe.subscriptions.list({ customer: customerId, limit: 5, status: 'active' });
-      const sub = subs.data[0];
-      if (sub) {
-        subscriptionId = sub.id;
-        const priceId = sub.items.data[0]?.price?.id ?? null;
-        tier = (sub.metadata?.plan_tier as string | undefined) ?? (priceId ? tierMap[priceId] : null);
-        group = group ?? (sub.metadata?.user_group as string | undefined) ?? (priceId ? groupMap[priceId] : null);
+      } catch (err) {
+        console.error(`Erro ao recuperar sub da session ${subscriptionId}:`, err);
+        subscriptionId = null;
+        tier = null;
       }
     }
 
-    // 3️⃣ Último recurso: busca por e-mail na Stripe (usando customers.list para resposta imediata sem lag de indexação)
-    if (!tier && user.email) {
-      console.log(`Buscando customer por e-mail: ${user.email}`);
-      const customers = await stripe.customers.list({
-        email: user.email,
-        limit: 1,
-      });
-      const cust = customers.data[0];
-      if (cust) {
-        customerId = cust.id;
-        console.log(`Customer localizado por e-mail: ${customerId}`);
-        const subs = await stripe.subscriptions.list({ customer: customerId, limit: 5, status: 'active' });
-        const sub = subs.data[0];
-        if (sub) {
+    // 2️⃣ Se ainda não temos a assinatura resolvida, listamos as assinaturas ativas do cliente
+    if (!subscriptionId && customerId) {
+      try {
+        console.log(`Buscando assinaturas ativas na Stripe para o customer: ${customerId}`);
+        const subs = await stripe.subscriptions.list({ customer: customerId, limit: 10, status: 'active' });
+        
+        let chosenSub = null;
+        if (targetTier) {
+          chosenSub = subs.data.find(sub => {
+            const priceId = sub.items.data[0]?.price?.id ?? null;
+            const subTier = (sub.metadata?.plan_tier as string | undefined) ?? (priceId ? tierMap[priceId] : null);
+            return subTier === targetTier;
+          });
+        }
+        
+        if (!chosenSub && subs.data.length > 0) {
+          chosenSub = subs.data[0];
+        }
+
+        if (chosenSub) {
+          subscriptionId = chosenSub.id;
+          const priceId = chosenSub.items.data[0]?.price?.id ?? null;
+          tier = (chosenSub.metadata?.plan_tier as string | undefined) ?? (priceId ? tierMap[priceId] : null);
+          group = group ?? (chosenSub.metadata?.user_group as string | undefined) ?? (priceId ? groupMap[priceId] : null);
+          console.log(`Assinatura ativa selecionada do customer: ${subscriptionId}, Tier: ${tier}`);
+        }
+      } catch (err) {
+        console.error(`Erro ao listar subs do customer ${customerId}:`, err);
+      }
+    }
+
+    // 3️⃣ Se ainda não temos assinatura e temos o email, tenta achar o customer e listar suas assinaturas
+    if (!subscriptionId && user.email) {
+      try {
+        console.log(`Buscando customer por e-mail: ${user.email}`);
+        const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+        const cust = customers.data[0];
+        if (cust) {
+          customerId = cust.id;
+          console.log(`Customer localizado por e-mail: ${customerId}`);
+          const subs = await stripe.subscriptions.list({ customer: customerId, limit: 10, status: 'active' });
+          
+          let chosenSub = null;
+          if (targetTier) {
+            chosenSub = subs.data.find(sub => {
+              const priceId = sub.items.data[0]?.price?.id ?? null;
+              const subTier = (sub.metadata?.plan_tier as string | undefined) ?? (priceId ? tierMap[priceId] : null);
+              return subTier === targetTier;
+            });
+          }
+          
+          if (!chosenSub && subs.data.length > 0) {
+            chosenSub = subs.data[0];
+          }
+
+          if (chosenSub) {
+            subscriptionId = chosenSub.id;
+            const priceId = chosenSub.items.data[0]?.price?.id ?? null;
+            tier = (chosenSub.metadata?.plan_tier as string | undefined) ?? (priceId ? tierMap[priceId] : null);
+            group = group ?? (chosenSub.metadata?.user_group as string | undefined) ?? (priceId ? groupMap[priceId] : null);
+            console.log(`Assinatura ativa selecionada por email: ${subscriptionId}, Tier: ${tier}`);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar customer por email:', err);
+      }
+    }
+
+    // 4️⃣ Fallback: Se ainda não temos nada, mas a assinatura do banco tem uma subscriptionId, verifica ela diretamente
+    const dbSubId = assinatura?.stripe_subscription_id;
+    if (!subscriptionId && dbSubId) {
+      try {
+        console.log(`Fallback: verificando assinatura existente do banco: ${dbSubId}`);
+        const sub = await stripe.subscriptions.retrieve(dbSubId);
+        if (sub.status === 'active' || sub.status === 'trialing') {
           subscriptionId = sub.id;
           const priceId = sub.items.data[0]?.price?.id ?? null;
           tier = (sub.metadata?.plan_tier as string | undefined) ?? (priceId ? tierMap[priceId] : null);
           group = group ?? (sub.metadata?.user_group as string | undefined) ?? (priceId ? groupMap[priceId] : null);
-          console.log(`Assinatura ativa encontrada por e-mail: ${subscriptionId}, plano: ${tier}`);
+          customerId = customerId ?? (typeof sub.customer === 'string' ? sub.customer : (sub.customer as any)?.id ?? null);
+          console.log(`Fallback bem sucedido! Assinatura ativa: ${subscriptionId}, Tier: ${tier}`);
         }
-      }
+      } catch (_) { /* subscription pode não existir */ }
     }
 
     if (!tier || !group) {
@@ -312,6 +374,23 @@ Deno.serve(async (req) => {
     }
 
     const rpcPayload = rpcData as { success?: boolean; new_activation?: boolean };
+
+    // Se ativou com sucesso, e a assinatura mudou (ex: upgrade/downgrade), cancela a antiga na Stripe para evitar cobrança dupla
+    const oldSubscriptionId = assinatura?.stripe_subscription_id;
+    if (
+      rpcPayload?.success &&
+      oldSubscriptionId &&
+      subscriptionId &&
+      oldSubscriptionId !== subscriptionId
+    ) {
+      try {
+        console.log(`Cancelando assinatura antiga ${oldSubscriptionId} na Stripe devido a upgrade/mudança...`);
+        await stripe.subscriptions.cancel(oldSubscriptionId);
+      } catch (err) {
+        console.error(`Erro ao cancelar assinatura antiga ${oldSubscriptionId}:`, err);
+      }
+    }
+
     if (rpcPayload?.success && rpcPayload?.new_activation && user.email) {
       // Dispara o e-mail de confirmação em segundo plano (sem bloquear a resposta HTTP do app)
       enviarEmailConfirmacao(user.email, tier, group).catch(console.error);
