@@ -8,12 +8,12 @@ export type StripePlanKey = `${UserGroup}_${PlanTier}`;
 
 /** IDs dos Prices no Stripe (mode: subscription, recurring monthly) */
 export const STRIPE_PRICE_IDS: Partial<Record<StripePlanKey, string>> = {
-  motorista_bronze: 'price_1TaxoePFQwuRFQbNH58ShlMn',
-  motorista_prata: 'price_1TaxoyPFQwuRFQbNFm5cyIWf',
-  motorista_ouro: 'price_1TaxpIPFQwuRFQbN95waf4Cc',
-  empresa_bronze: 'price_1TaxpePFQwuRFQbNIoaaNdXw',
-  empresa_prata: 'price_1TaxqEPFQwuRFQbNbznxFmgG',
-  empresa_ouro: 'price_1TaxqfPFQwuRFQbND81JoD0H',
+  motorista_bronze: 'price_1TfjDY4v2T43THsUhrUsvwOn',
+  motorista_prata: 'price_1TfjDo4v2T43THsUimKvH0Wt',
+  motorista_ouro: 'price_1TfjEA4v2T43THsUSqGk5gxI',
+  empresa_bronze: 'price_1TfjEQ4v2T43THsUIXOxM29p',
+  empresa_prata: 'price_1TfjEi4v2T43THsUUasaaFH0',
+  empresa_ouro: 'price_1TfjEy4v2T43THsUnnxQ46A7',
 };
 
 /** Metadata enviada ao Stripe Checkout — usada no webhook */

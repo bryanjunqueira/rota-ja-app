@@ -13,17 +13,17 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
 
 const PRICE_IDS: Record<string, string> = {
   motorista_bronze:
-    Deno.env.get('STRIPE_PRICE_MOTORISTA_BRONZE') ?? 'price_1TaxoePFQwuRFQbNH58ShlMn',
+    Deno.env.get('STRIPE_PRICE_MOTORISTA_BRONZE') ?? 'price_1TfjDY4v2T43THsUhrUsvwOn',
   motorista_prata:
-    Deno.env.get('STRIPE_PRICE_MOTORISTA_PRATA') ?? 'price_1TaxoyPFQwuRFQbNFm5cyIWf',
+    Deno.env.get('STRIPE_PRICE_MOTORISTA_PRATA') ?? 'price_1TfjDo4v2T43THsUimKvH0Wt',
   motorista_ouro:
-    Deno.env.get('STRIPE_PRICE_MOTORISTA_OURO') ?? 'price_1TaxpIPFQwuRFQbN95waf4Cc',
+    Deno.env.get('STRIPE_PRICE_MOTORISTA_OURO') ?? 'price_1TfjEA4v2T43THsUSqGk5gxI',
   empresa_bronze:
-    Deno.env.get('STRIPE_PRICE_EMPRESA_BRONZE') ?? 'price_1TaxpePFQwuRFQbNIoaaNdXw',
+    Deno.env.get('STRIPE_PRICE_EMPRESA_BRONZE') ?? 'price_1TfjEQ4v2T43THsUIXOxM29p',
   empresa_prata:
-    Deno.env.get('STRIPE_PRICE_EMPRESA_PRATA') ?? 'price_1TaxqEPFQwuRFQbNbznxFmgG',
+    Deno.env.get('STRIPE_PRICE_EMPRESA_PRATA') ?? 'price_1TfjEi4v2T43THsUUasaaFH0',
   empresa_ouro:
-    Deno.env.get('STRIPE_PRICE_EMPRESA_OURO') ?? 'price_1TaxqfPFQwuRFQbND81JoD0H',
+    Deno.env.get('STRIPE_PRICE_EMPRESA_OURO') ?? 'price_1TfjEy4v2T43THsUnnxQ46A7',
 };
 
 const corsHeaders = {

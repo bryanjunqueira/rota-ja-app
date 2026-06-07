@@ -564,27 +564,59 @@ async function run() {
     // ────────────────────────────────────────────────────────────
     // FASE 4: AUDITORIA EMPRESA — PUBLICAÇÕES
     // ────────────────────────────────────────────────────────────
+    // Usa uma empresa NOVA e separada para evitar contagem residual de fretes
+    // da Fase 1 (a tabela fretes não tem policy DELETE via RLS, então deletes
+    // pelo client autenticado falham silenciosamente).
+    // ────────────────────────────────────────────────────────────
     console.log('\n================================================================');
     console.log('[Fase 4] Auditoria Empresa — limites de publicação');
     console.log('================================================================');
 
-    await supabase.from('fretes').delete().eq('user_id', companyUser.id);
-    await companyClient.from('assinaturas').delete().eq('user_id', companyUser.id);
+    // --- Criar empresa dedicada para teste trial ---
+    const empTrialEmail = `${prefix}_emp_trial@rotaja.com`;
+    const { data: empTrialAuth, error: empTrialAuthErr } = await supabase.auth.signUp({ email: empTrialEmail, password });
+    if (empTrialAuthErr || !empTrialAuth.user || !empTrialAuth.session)
+      throw new Error(`Falha ao criar empresa trial: ${empTrialAuthErr?.message}`);
+    const empTrialUser = { id: empTrialAuth.user.id, email: empTrialEmail, token: empTrialAuth.session.access_token };
+    const empTrialClient = getClientForUser(empTrialUser.token);
+    console.log(`  - Empresa trial criada: ${empTrialUser.id}`);
 
+    // Perfil empresa trial
+    const { error: empTrialProfErr } = await empTrialClient.from('empresas').insert({
+      user_id: empTrialUser.id,
+      nome_empresa: 'Empresa Trial Audit',
+      cnpj: `${(Date.now() + 100).toString().padStart(14, '0')}`,
+      endereco: 'Rua Trial, 1',
+      cep: '01001-000',
+      cidade: 'São Paulo',
+      estado: 'SP',
+      email: empTrialEmail,
+      telefone: '(11) 97777-7777',
+      nome_responsavel: 'Resp Trial',
+      cargo: 'Gerente',
+      status: 'aprovado'
+    });
+    if (empTrialProfErr) throw new Error(`Erro perfil empresa trial: ${empTrialProfErr.message}`);
+    const { data: empTrialProfData } = await empTrialClient.from('empresas').select('id').eq('user_id', empTrialUser.id).single();
+    const empTrialProfileId = empTrialProfData!.id;
+
+    // Assinatura gratuito/trial para empresa trial
     const agoraEmp = new Date();
     const fimTrialEmp = new Date(agoraEmp);
     fimTrialEmp.setDate(fimTrialEmp.getDate() + 7);
 
-    await companyClient.from('assinaturas').insert({
-      user_id: companyUser.id,
+    const { error: empTrialSubErr } = await empTrialClient.from('assinaturas').insert({
+      user_id: empTrialUser.id,
       tipo_usuario: 'empresa',
       tipo_plano: 'gratuito',
       status_assinatura: 'trial',
       trial_inicio: agoraEmp.toISOString(),
       trial_fim: fimTrialEmp.toISOString(),
       status_pagamento: 'pendente',
+      renovacao_automatica: true,
       historico_planos: [{ plano: 'gratuito', data: agoraEmp.toISOString(), acao: 'trial_criado' }],
     });
+    if (empTrialSubErr) throw new Error(`Erro assinatura empresa trial: ${empTrialSubErr.message}`);
 
     const permEmpGratuito = getPermissions('empresa', 'gratuito');
     assert(permEmpGratuito.maxFreightsPerMonth === EMPRESA_LIMITS.gratuitoTrialTotal, 'Empresa gratuito: 5 publicações');
@@ -592,9 +624,9 @@ async function run() {
     console.log('  - Empresa trial: publicando até 5 fretes (lifetime)...');
     let empPublished = 0;
     for (let i = 0; i < 6; i++) {
-      const { error } = await companyClient.from('fretes').insert({
-        empresa_id: empresaProfileId,
-        user_id: companyUser.id,
+      const { error } = await empTrialClient.from('fretes').insert({
+        empresa_id: empTrialProfileId,
+        user_id: empTrialUser.id,
         origem_cidade: 'SP',
         origem_estado: 'SP',
         destino_cidade: 'Campinas',
@@ -621,20 +653,52 @@ async function run() {
     }
     assert(empPublished === 5, `Empresa trial publicou exatamente ${empPublished} fretes (esperado 5)`);
 
-    await supabase.from('fretes').delete().eq('user_id', companyUser.id);
+    // --- Criar empresa dedicada para teste bronze ---
+    const empBronzeEmail = `${prefix}_emp_bronze@rotaja.com`;
+    const { data: empBronzeAuth, error: empBronzeAuthErr } = await supabase.auth.signUp({ email: empBronzeEmail, password });
+    if (empBronzeAuthErr || !empBronzeAuth.user || !empBronzeAuth.session)
+      throw new Error(`Falha ao criar empresa bronze: ${empBronzeAuthErr?.message}`);
+    const empBronzeUser = { id: empBronzeAuth.user.id, email: empBronzeEmail, token: empBronzeAuth.session.access_token };
+    const empBronzeClient = getClientForUser(empBronzeUser.token);
+    console.log(`  - Empresa bronze criada: ${empBronzeUser.id}`);
 
-    await companyClient.rpc('processar_assinatura_pagamento', {
-      p_novo_plano: 'bronze',
-      p_metodo_pagamento: 'cartao',
-      p_cenario: 'aprovado',
+    // Perfil empresa bronze
+    const { error: empBronzeProfErr } = await empBronzeClient.from('empresas').insert({
+      user_id: empBronzeUser.id,
+      nome_empresa: 'Empresa Bronze Audit',
+      cnpj: `${(Date.now() + 200).toString().padStart(14, '0')}`,
+      endereco: 'Rua Bronze, 2',
+      cep: '01002-000',
+      cidade: 'São Paulo',
+      estado: 'SP',
+      email: empBronzeEmail,
+      telefone: '(11) 96666-6666',
+      nome_responsavel: 'Resp Bronze',
+      cargo: 'Gerente',
+      status: 'aprovado'
     });
+    if (empBronzeProfErr) throw new Error(`Erro perfil empresa bronze: ${empBronzeProfErr.message}`);
+    const { data: empBronzeProfData } = await empBronzeClient.from('empresas').select('id').eq('user_id', empBronzeUser.id).single();
+    const empBronzeProfileId = empBronzeProfData!.id;
+
+    // Assinatura bronze ativo para empresa bronze
+    const { error: empBronzeSubErr } = await empBronzeClient.from('assinaturas').insert({
+      user_id: empBronzeUser.id,
+      tipo_usuario: 'empresa',
+      tipo_plano: 'bronze',
+      status_assinatura: 'ativo',
+      status_pagamento: 'aprovado',
+      renovacao_automatica: true,
+      historico_planos: [{ plano: 'bronze', data: agoraEmp.toISOString(), acao: 'ativacao' }],
+    });
+    if (empBronzeSubErr) throw new Error(`Erro assinatura empresa bronze: ${empBronzeSubErr.message}`);
 
     console.log('  - Empresa bronze: limite mensal 15...');
     empPublished = 0;
     for (let i = 0; i < 16; i++) {
-      const { error } = await companyClient.from('fretes').insert({
-        empresa_id: empresaProfileId,
-        user_id: companyUser.id,
+      const { error } = await empBronzeClient.from('fretes').insert({
+        empresa_id: empBronzeProfileId,
+        user_id: empBronzeUser.id,
         origem_cidade: 'SP',
         origem_estado: 'SP',
         destino_cidade: 'RJ',
@@ -669,20 +733,20 @@ async function run() {
     // FASE 4: LIMPEZA DOS DADOS DO TESTE
     // ────────────────────────────────────────────────────────────
     console.log('\n[Limpeza] Removendo dados de teste gerados...');
-    if (createdFreights.length > 0) {
-      await supabase.from('fretes').delete().in('id', createdFreights);
+    if (createdFreights.length > 0 && typeof companyClient !== 'undefined') {
+      await companyClient.from('fretes').delete().in('id', createdFreights);
       console.log('  - Cargas de teste deletadas.');
     }
-    if (motoristaProfileId) {
-      await supabase.from('motoristas').delete().eq('id', motoristaProfileId);
+    if (motoristaProfileId && typeof driverClient !== 'undefined') {
+      await driverClient.from('motoristas').delete().eq('id', motoristaProfileId);
       console.log('  - Perfil de motorista de teste deletado.');
     }
-    if (empresaProfileId) {
-      await supabase.from('empresas').delete().eq('id', empresaProfileId);
+    if (empresaProfileId && typeof companyClient !== 'undefined') {
+      await companyClient.from('empresas').delete().eq('id', empresaProfileId);
       console.log('  - Perfil de empresa de teste deletado.');
     }
-    if (companyUser) {
-      await supabase.from('fretes').delete().eq('user_id', companyUser.id);
+    if (companyUser && typeof companyClient !== 'undefined') {
+      await companyClient.from('fretes').delete().eq('user_id', companyUser.id);
       await supabase.from('assinaturas').delete().eq('user_id', companyUser.id);
     }
     if (driverUser) {

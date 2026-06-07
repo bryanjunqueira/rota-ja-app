@@ -20,12 +20,12 @@ const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 /** price_id → tier (lê os mesmos secrets STRIPE_PRICE_* do create-checkout-session) */
 function buildPriceToTier(): Record<string, string> {
   const entries: [string, string][] = [
-    [Deno.env.get('STRIPE_PRICE_MOTORISTA_BRONZE') ?? 'price_1TaxoePFQwuRFQbNH58ShlMn', 'bronze'],
-    [Deno.env.get('STRIPE_PRICE_MOTORISTA_PRATA') ?? 'price_1TaxoyPFQwuRFQbNFm5cyIWf', 'prata'],
-    [Deno.env.get('STRIPE_PRICE_MOTORISTA_OURO') ?? 'price_1TaxpIPFQwuRFQbN95waf4Cc', 'ouro'],
-    [Deno.env.get('STRIPE_PRICE_EMPRESA_BRONZE') ?? 'price_1TaxpePFQwuRFQbNIoaaNdXw', 'bronze'],
-    [Deno.env.get('STRIPE_PRICE_EMPRESA_PRATA') ?? 'price_1TaxqEPFQwuRFQbNbznxFmgG', 'prata'],
-    [Deno.env.get('STRIPE_PRICE_EMPRESA_OURO') ?? 'price_1TaxqfPFQwuRFQbND81JoD0H', 'ouro'],
+    [Deno.env.get('STRIPE_PRICE_MOTORISTA_BRONZE') ?? 'price_1TfjDY4v2T43THsUhrUsvwOn', 'bronze'],
+    [Deno.env.get('STRIPE_PRICE_MOTORISTA_PRATA') ?? 'price_1TfjDo4v2T43THsUimKvH0Wt', 'prata'],
+    [Deno.env.get('STRIPE_PRICE_MOTORISTA_OURO') ?? 'price_1TfjEA4v2T43THsUSqGk5gxI', 'ouro'],
+    [Deno.env.get('STRIPE_PRICE_EMPRESA_BRONZE') ?? 'price_1TfjEQ4v2T43THsUIXOxM29p', 'bronze'],
+    [Deno.env.get('STRIPE_PRICE_EMPRESA_PRATA') ?? 'price_1TfjEi4v2T43THsUUasaaFH0', 'prata'],
+    [Deno.env.get('STRIPE_PRICE_EMPRESA_OURO') ?? 'price_1TfjEy4v2T43THsUnnxQ46A7', 'ouro'],
   ];
   const map: Record<string, string> = {};
   for (const [priceId, tier] of entries) {

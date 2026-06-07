@@ -22,12 +22,12 @@ function buildPriceMaps(): {
   groupMap: Record<string, string>;
 } {
   const entries: [string, string, string][] = [
-    [Deno.env.get('STRIPE_PRICE_MOTORISTA_BRONZE') ?? 'price_1TaxoePFQwuRFQbNH58ShlMn', 'bronze', 'motorista'],
-    [Deno.env.get('STRIPE_PRICE_MOTORISTA_PRATA') ?? 'price_1TaxoyPFQwuRFQbNFm5cyIWf', 'prata', 'motorista'],
-    [Deno.env.get('STRIPE_PRICE_MOTORISTA_OURO') ?? 'price_1TaxpIPFQwuRFQbN95waf4Cc', 'ouro', 'motorista'],
-    [Deno.env.get('STRIPE_PRICE_EMPRESA_BRONZE') ?? 'price_1TaxpePFQwuRFQbNIoaaNdXw', 'bronze', 'empresa'],
-    [Deno.env.get('STRIPE_PRICE_EMPRESA_PRATA') ?? 'price_1TaxqEPFQwuRFQbNbznxFmgG', 'prata', 'empresa'],
-    [Deno.env.get('STRIPE_PRICE_EMPRESA_OURO') ?? 'price_1TaxqfPFQwuRFQbND81JoD0H', 'ouro', 'empresa'],
+    [Deno.env.get('STRIPE_PRICE_MOTORISTA_BRONZE') ?? 'price_1TfjDY4v2T43THsUhrUsvwOn', 'bronze', 'motorista'],
+    [Deno.env.get('STRIPE_PRICE_MOTORISTA_PRATA') ?? 'price_1TfjDo4v2T43THsUimKvH0Wt', 'prata', 'motorista'],
+    [Deno.env.get('STRIPE_PRICE_MOTORISTA_OURO') ?? 'price_1TfjEA4v2T43THsUSqGk5gxI', 'ouro', 'motorista'],
+    [Deno.env.get('STRIPE_PRICE_EMPRESA_BRONZE') ?? 'price_1TfjEQ4v2T43THsUIXOxM29p', 'bronze', 'empresa'],
+    [Deno.env.get('STRIPE_PRICE_EMPRESA_PRATA') ?? 'price_1TfjEi4v2T43THsUUasaaFH0', 'prata', 'empresa'],
+    [Deno.env.get('STRIPE_PRICE_EMPRESA_OURO') ?? 'price_1TfjEy4v2T43THsUnnxQ46A7', 'ouro', 'empresa'],
   ];
   const tierMap: Record<string, string> = {};
   const groupMap: Record<string, string> = {};
