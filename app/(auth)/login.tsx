@@ -91,6 +91,10 @@ export default function LoginScreen() {
     if (result.success) {
       setSuccessMsg('Email de confirmação reenviado! Verifique sua caixa de entrada.');
       setShowResend(false);
+      // Redireciona para a tela de verificação após exibir a mensagem por 1.5s
+      setTimeout(() => {
+        router.replace(`/(auth)/verificar-email?email=${encodeURIComponent(email.trim())}`);
+      }, 1500);
     } else {
       setError(result.error || 'Erro ao reenviar email.');
     }

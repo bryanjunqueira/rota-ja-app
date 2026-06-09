@@ -18,8 +18,9 @@ export const StripeCheckoutService = {
       cancelUrl?: string;
       metodoPagamento?: PaymentMethod;
       amountCents?: number;
+      couponCode?: string;
     }
-  ): Promise<{ url: string | null; sessionId?: string; error?: string }> {
+  ): Promise<{ url: string | null; sessionId?: string; directActivation?: boolean; error?: string }> {
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout-session', {
         body: {
@@ -29,6 +30,7 @@ export const StripeCheckoutService = {
           cancelUrl: options?.cancelUrl,
           metodoPagamento: options?.metodoPagamento ?? 'cartao',
           amountCents: options?.amountCents,
+          couponCode: options?.couponCode,
         },
       });
 
@@ -36,7 +38,7 @@ export const StripeCheckoutService = {
         return { url: null, error: error.message };
       }
 
-      const payload = data as { url?: string; sessionId?: string; error?: string };
+      const payload = data as { url?: string; sessionId?: string; directActivation?: boolean; error?: string };
       if (payload?.error) {
         return { url: null, error: payload.error };
       }
@@ -44,6 +46,7 @@ export const StripeCheckoutService = {
       return {
         url: payload?.url ?? null,
         sessionId: payload?.sessionId ?? undefined,
+        directActivation: payload?.directActivation ?? false,
       };
     } catch (e) {
       console.error('[StripeCheckout]', e);

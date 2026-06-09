@@ -52,6 +52,7 @@ export default function PlanosScreen() {
   const { session, role, logout } = useAuth();
   const { tier: currentTier, status, isTrialActive, daysRemaining, needsUpgrade } = useSubscription();
   const [tab, setTab] = useState<UserGroup>(role === 'empresa' ? 'empresa' : 'motorista');
+  const activeTab = session && (role === 'motorista' || role === 'empresa') ? role : tab;
 
   // Animação de entrada dos cards
   const fadeAnims = useRef([
@@ -60,20 +61,7 @@ export default function PlanosScreen() {
     new Animated.Value(0),
   ]).current;
 
-  useEffect(() => {
-    const animations = fadeAnims.map((anim, i) =>
-      Animated.timing(anim, {
-        toValue: 1,
-        duration: 400,
-        delay: i * 120,
-        easing: Easing.out(Easing.back(1.1)),
-        useNativeDriver: true,
-      })
-    );
-    Animated.stagger(100, animations).start();
-  }, [tab]);
-
-  // Reset animações ao trocar tab
+  // Reset e rodar animações ao trocar tab
   useEffect(() => {
     fadeAnims.forEach((a) => a.setValue(0));
     const animations = fadeAnims.map((anim, i) =>
@@ -86,9 +74,9 @@ export default function PlanosScreen() {
       })
     );
     Animated.stagger(100, animations).start();
-  }, [tab]);
+  }, [activeTab]);
 
-  const plans = getPaidPlans(tab);
+  const plans = getPaidPlans(activeTab);
 
   const handleSelectPlan = (plan: PlanDefinition) => {
     if (session) {
@@ -162,36 +150,38 @@ export default function PlanosScreen() {
         )}
 
         {/* Tabs Motorista / Empresa */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity
-            style={[styles.tab, tab === 'motorista' && styles.tabActive]}
-            onPress={() => setTab('motorista')}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="car-sport"
-              size={16}
-              color={tab === 'motorista' ? COLORS.primary : COLORS.textSecondary}
-            />
-            <Text style={[styles.tabText, tab === 'motorista' && styles.tabTextActive]}>
-              Motoristas
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, tab === 'empresa' && styles.tabActive]}
-            onPress={() => setTab('empresa')}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="business"
-              size={16}
-              color={tab === 'empresa' ? COLORS.primary : COLORS.textSecondary}
-            />
-            <Text style={[styles.tabText, tab === 'empresa' && styles.tabTextActive]}>
-              Empresas
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {!session && (
+          <View style={styles.tabsContainer}>
+            <TouchableOpacity
+              style={[styles.tab, tab === 'motorista' && styles.tabActive]}
+              onPress={() => setTab('motorista')}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="car-sport"
+                size={16}
+                color={tab === 'motorista' ? COLORS.primary : COLORS.textSecondary}
+              />
+              <Text style={[styles.tabText, tab === 'motorista' && styles.tabTextActive]}>
+                Motoristas
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, tab === 'empresa' && styles.tabActive]}
+              onPress={() => setTab('empresa')}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="business"
+                size={16}
+                color={tab === 'empresa' ? COLORS.primary : COLORS.textSecondary}
+              />
+              <Text style={[styles.tabText, tab === 'empresa' && styles.tabTextActive]}>
+                Empresas
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Plan Cards */}
         <View style={styles.cardsWrapper}>

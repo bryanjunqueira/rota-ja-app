@@ -9,7 +9,7 @@
  *  3. Depois do onboarding, nunca mais aparece (salvo reinstalação)
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { Platform, LogBox } from 'react-native';
+import { Platform, LogBox, View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -108,6 +108,12 @@ function RootNavigationGuard() {
 
     // ── REGRA 2: Fluxo normal de auth (só age quando onboarding já foi visto)
     if (onboardingSeen) {
+      const isEmailConfirmed = user && (user.email_confirmed_at || user.confirmed_at);
+      if (user && !isEmailConfirmed && segs[1] !== 'verificar-email') {
+        router.replace(`/(auth)/verificar-email?email=${encodeURIComponent(user.email ?? '')}`);
+        return;
+      }
+
       if (!user && !inAuthGroup) {
         router.replace('/(auth)/landing');
       } else if (user && inAuthGroup && !isPublicAuthRoute) {
@@ -141,6 +147,15 @@ function RootNavigationGuard() {
     }
   }, [loading, onboardingSeen, subLoading]);
 
+  if (loading || onboardingSeen === null || subLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <StatusBar style="dark" />
+        <ActivityIndicator size="large" color="#2094f3" />
+      </View>
+    );
+  }
+
   return (
     <>
       <StatusBar style="light" />
@@ -167,3 +182,12 @@ export default function RootLayout() {
     </AuthProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

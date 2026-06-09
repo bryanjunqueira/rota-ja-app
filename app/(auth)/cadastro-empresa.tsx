@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { EmpresasService, AssinaturasService } from '@/services';
 import { Button, Input } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
+import { formatPhone, formatCep } from '@/lib/validation';
 
 export default function CadastroEmpresaScreen() {
   const router = useRouter();
@@ -26,6 +27,41 @@ export default function CadastroEmpresaScreen() {
   const update = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
+  };
+
+  const handleCepChange = async (val: string) => {
+    const formatted = formatCep(val);
+    setForm(prev => ({ ...prev, cep: formatted }));
+    if (errors.cep) setErrors(prev => ({ ...prev, cep: '' }));
+
+    const cleaned = formatted.replace(/\D/g, '');
+    if (cleaned.length === 8) {
+      try {
+        const response = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
+        const data = await response.json();
+        if (!data.erro) {
+          setForm(prev => ({
+            ...prev,
+            cep: formatted,
+            endereco: `${data.logradouro}, ${data.bairro}`,
+            cidade: data.localidade,
+            estado: data.uf,
+          }));
+          setErrors(prev => ({
+            ...prev,
+            cep: '',
+            endereco: '',
+            cidade: '',
+            estado: '',
+          }));
+        } else {
+          setErrors(prev => ({ ...prev, cep: 'CEP não encontrado.' }));
+        }
+      } catch (err) {
+        console.error('Erro ao buscar CEP:', err);
+        setErrors(prev => ({ ...prev, cep: 'Erro ao consultar CEP.' }));
+      }
+    }
   };
 
   const validateStep1 = () => {
@@ -133,13 +169,13 @@ export default function CadastroEmpresaScreen() {
 
               <Text style={styles.sectionHeader}>Endereço</Text>
               <Input label="Endereço" placeholder="Rua, número, bairro" value={form.endereco} onChangeText={v => update('endereco', v)} error={errors.endereco} required />
-              <Input label="CEP" placeholder="00000-000" value={form.cep} onChangeText={v => update('cep', v)} error={errors.cep} keyboardType="numeric" required />
+              <Input label="CEP" placeholder="00000-000" value={form.cep} onChangeText={handleCepChange} error={errors.cep} keyboardType="numeric" required maxLength={9} />
               <View style={styles.row}>
                 <View style={{ flex: 2 }}>
                   <Input label="Cidade" placeholder="Cidade" value={form.cidade} onChangeText={v => update('cidade', v)} error={errors.cidade} required />
                 </View>
                 <View style={{ flex: 1, marginLeft: SPACING.sm }}>
-                  <Input label="UF" placeholder="SP" value={form.estado} onChangeText={v => update('estado', v)} error={errors.estado} autoCapitalize="characters" required />
+                  <Input label="UF" placeholder="SP" value={form.estado} onChangeText={v => update('estado', v.slice(0, 2))} error={errors.estado} autoCapitalize="characters" required maxLength={2} />
                 </View>
               </View>
             </>
@@ -149,7 +185,7 @@ export default function CadastroEmpresaScreen() {
             <>
               <Text style={styles.sectionHeader}>Dados de Contato</Text>
               <Input label="E-mail" placeholder="contato@empresa.com" value={form.email} onChangeText={v => update('email', v)} error={errors.email} keyboardType="email-address" required />
-              <Input label="Telefone" placeholder="(11) 99999-9999" value={form.telefone} onChangeText={v => update('telefone', v)} error={errors.telefone} keyboardType="phone-pad" required />
+              <Input label="Telefone" placeholder="(11) 99999-9999" value={form.telefone} onChangeText={v => update('telefone', formatPhone(v))} error={errors.telefone} keyboardType="phone-pad" required maxLength={15} />
 
               <Text style={styles.sectionHeader}>Dados de Acesso</Text>
               <Input label="Senha" placeholder="Mínimo 6 caracteres" value={form.senha} onChangeText={v => update('senha', v)} error={errors.senha} isPassword required />

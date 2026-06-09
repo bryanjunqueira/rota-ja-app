@@ -8,6 +8,7 @@ import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Tou
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { MotoristasService, VeiculosService, AssinaturasService } from '@/services';
+import { formatPhone, formatCep, validarCNH } from '@/lib/validation';
 import { Button, Input } from '@/components';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '@/config/theme';
 
@@ -41,13 +42,44 @@ export default function CadastroMotoristaScreen() {
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
   };
 
+  const handleCepChange = async (val: string) => {
+    const formatted = formatCep(val);
+    setForm(prev => ({ ...prev, cep: formatted }));
+    if (errors.cep) setErrors(prev => ({ ...prev, cep: '' }));
+
+    const cleaned = formatted.replace(/\D/g, '');
+    if (cleaned.length === 8) {
+      try {
+        const response = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`);
+        const data = await response.json();
+        if (!data.erro) {
+          setForm(prev => ({
+            ...prev,
+            cep: formatted,
+            endereco: `${data.logradouro}, ${data.bairro} - ${data.localidade}/${data.uf}`,
+          }));
+          setErrors(prev => ({ ...prev, endereco: '', cep: '' }));
+        } else {
+          setErrors(prev => ({ ...prev, cep: 'CEP não encontrado.' }));
+        }
+      } catch (err) {
+        console.error('Erro ao buscar CEP:', err);
+        setErrors(prev => ({ ...prev, cep: 'Erro ao consultar CEP.' }));
+      }
+    }
+  };
+
   const validateStep1 = () => {
     const e: Record<string, string> = {};
     if (!form.nomeCompleto.trim()) e.nomeCompleto = 'Nome completo é obrigatório';
     if (!form.endereco.trim()) e.endereco = 'Endereço é obrigatório';
     if (!form.cep.trim()) e.cep = 'CEP é obrigatório';
     if (!form.celular.trim()) e.celular = 'Celular é obrigatório';
-    if (!form.cnh.trim()) e.cnh = 'CNH é obrigatória';
+    if (!form.cnh.trim()) {
+      e.cnh = 'CNH é obrigatória';
+    } else if (!validarCNH(form.cnh)) {
+      e.cnh = 'CNH inválida. Digite uma CNH válida de 11 dígitos.';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -160,9 +192,9 @@ export default function CadastroMotoristaScreen() {
             <>
               <Input label="Nome Completo" placeholder="Seu nome completo" value={form.nomeCompleto} onChangeText={v => update('nomeCompleto', v)} error={errors.nomeCompleto} required />
               <Input label="Endereço" placeholder="Rua, número, bairro" value={form.endereco} onChangeText={v => update('endereco', v)} error={errors.endereco} required />
-              <Input label="CEP" placeholder="00000-000" value={form.cep} onChangeText={v => update('cep', v)} error={errors.cep} keyboardType="numeric" required />
-              <Input label="Celular" placeholder="(11) 99999-9999" value={form.celular} onChangeText={v => update('celular', v)} error={errors.celular} keyboardType="phone-pad" required />
-              <Input label="CNH" placeholder="Número da CNH" value={form.cnh} onChangeText={v => update('cnh', v)} error={errors.cnh} keyboardType="numeric" required />
+              <Input label="CEP" placeholder="00000-000" value={form.cep} onChangeText={handleCepChange} error={errors.cep} keyboardType="numeric" required maxLength={9} />
+              <Input label="Celular" placeholder="(11) 99999-9999" value={form.celular} onChangeText={v => update('celular', formatPhone(v))} error={errors.celular} keyboardType="phone-pad" required maxLength={15} />
+              <Input label="CNH" placeholder="Número da CNH" value={form.cnh} onChangeText={v => update('cnh', v.replace(/\D/g, '').slice(0, 11))} error={errors.cnh} keyboardType="numeric" required maxLength={11} />
             </>
           )}
 

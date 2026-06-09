@@ -1,8 +1,8 @@
 /**
- * Checkout — Tela de pagamento sandbox
+ * Checkout — Tela de pagamento Stripe
  *
- * Métodos: Cartão, PIX, Boleto
- * Painel sandbox para simular cenários de pagamento.
+ * Métodos: Cartão, Boleto (via Stripe)
+ * Integração real com Stripe Checkout.
  * Ao aprovar: atualiza Supabase, navega pro dashboard.
  */
 import React, { useEffect, useState } from 'react';
@@ -56,6 +56,32 @@ export default function CheckoutScreen() {
 
   // Stripe verification states
   const [verifyingStripe, setVerifyingStripe] = useState(false);
+
+  // Coupon states
+  const [couponInput, setCouponInput] = useState('');
+  const [couponApplied, setCouponApplied] = useState(false);
+  const [appliedCouponName, setAppliedCouponName] = useState('');
+  const [discountPercent, setDiscountPercent] = useState(0);
+
+  const handleApplyCoupon = () => {
+    const code = couponInput.trim().toUpperCase();
+    if (code === 'TESTE100') {
+      setDiscountPercent(100);
+      setCouponApplied(true);
+      setAppliedCouponName(code);
+      Alert.alert('Sucesso', 'Cupom TESTE100 aplicado! Desconto de 100% concedido.');
+    } else {
+      Alert.alert('Erro', 'Cupom inválido ou expirado. Verifique o código e tente novamente.');
+      setDiscountPercent(0);
+      setCouponApplied(false);
+      setAppliedCouponName('');
+    }
+  };
+
+  const finalPrice = Math.max(0, plan.price * (1 - discountPercent / 100));
+  const finalPriceFormatted = discountPercent === 100
+    ? 'Grátis'
+    : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(finalPrice / 100);
   const [stripeSuccessText, setStripeSuccessText] = useState('Estamos confirmando o seu pagamento...');
   const [showVerifyManualBtn, setShowVerifyManualBtn] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
@@ -273,7 +299,20 @@ export default function CheckoutScreen() {
           cancelUrl,
           metodoPagamento: paymentMethod,
           amountCents: plan.price,
+          couponCode: couponApplied ? appliedCouponName : undefined,
         });
+
+        if (stripe.directActivation) {
+          await refreshSubscription();
+          setProcessing(false);
+          setShowSuccess(true);
+          setTimeout(() => {
+            setShowSuccess(false);
+            router.replace('/(app)/dashboard');
+          }, 2500);
+          return;
+        }
+
         if (!stripe.url) {
           Alert.alert('Erro', stripe.error || 'Não foi possível abrir o pagamento Stripe.');
           return;
@@ -402,7 +441,19 @@ export default function CheckoutScreen() {
             <PremiumBadge tier={tier} size="lg" showLabel />
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.planNameText}>{plan.name}</Text>
-              <Text style={styles.planPriceText}>{plan.priceFormatted}</Text>
+              <Text style={styles.planPriceText}>
+                {discountPercent > 0 ? (
+                  <>
+                    <Text style={{ textDecorationLine: 'line-through', color: COLORS.textTertiary, fontSize: 13 }}>
+                      {plan.priceFormatted}
+                    </Text>
+                    {'  '}
+                    {finalPriceFormatted}
+                  </>
+                ) : (
+                  plan.priceFormatted
+                )}
+              </Text>
             </View>
           </View>
           <Text style={styles.billingInfo}>
@@ -430,6 +481,43 @@ export default function CheckoutScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Cupom de Desconto */}
+        <Text style={styles.sectionTitle}>Cupom de Desconto</Text>
+        <View style={styles.couponContainer}>
+          <TextInput
+            style={[styles.input, { flex: 1, marginBottom: 0 }]}
+            placeholder="Digite o cupom de desconto"
+            placeholderTextColor={COLORS.textTertiary}
+            autoCapitalize="characters"
+            value={couponInput}
+            onChangeText={(text) => {
+              setCouponInput(text);
+              if (couponApplied) {
+                setCouponApplied(false);
+                setDiscountPercent(0);
+              }
+            }}
+          />
+          <TouchableOpacity
+            style={[
+              styles.couponBtn,
+              (!couponInput.trim() || processing) && styles.couponBtnDisabled,
+            ]}
+            onPress={handleApplyCoupon}
+            disabled={!couponInput.trim() || processing}
+          >
+            <Text style={styles.couponBtnText}>Aplicar</Text>
+          </TouchableOpacity>
+        </View>
+        {couponApplied && (
+          <View style={styles.couponSuccessBox}>
+            <Ionicons name="checkmark-circle" size={16} color="#059669" />
+            <Text style={styles.couponSuccessText}>
+              Cupom {appliedCouponName} aplicado! ({discountPercent}% de desconto)
+            </Text>
+          </View>
+        )}
 
         {/* Formulário Cartão (sandbox) ou aviso Stripe */}
         {ENV.PAYMENTS_MODE === 'stripe' && (
@@ -605,7 +693,7 @@ export default function CheckoutScreen() {
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total a pagar hoje:</Text>
-          <Text style={styles.totalValue}>{plan.priceFormatted}</Text>
+          <Text style={styles.totalValue}>{finalPriceFormatted}</Text>
         </View>
         <TouchableOpacity
           style={[styles.checkoutBtn, processing && { opacity: 0.6 }]}
@@ -930,6 +1018,47 @@ const styles = StyleSheet.create({
   closeModalBtnText: {
     color: COLORS.textSecondary,
     fontSize: 15,
+    fontWeight: '600',
+  },
+  // Coupon styles
+  couponContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+    alignItems: 'center',
+  },
+  couponBtn: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 20,
+    height: 50,
+    borderRadius: BORDER_RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.sm,
+  },
+  couponBtnDisabled: {
+    backgroundColor: '#CBD5E1',
+    opacity: 0.7,
+  },
+  couponBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  couponSuccessBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 1,
+    borderRadius: BORDER_RADIUS.md,
+    padding: 12,
+    marginBottom: 24,
+  },
+  couponSuccessText: {
+    color: '#047857',
+    fontSize: 13,
     fontWeight: '600',
   },
 });
